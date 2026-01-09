@@ -397,17 +397,26 @@ class YoungpoongScraper:
             except:
                 pass
             
-            # 방법 2: ActionChains 클릭
-            try:
-                from selenium.webdriver.common.action_chains import ActionChains
-                actions = ActionChains(self.driver)
-                actions.move_to_element(search_button).click().perform()
-                print("✓ 검색 버튼 클릭 성공 (ActionChains)")
-                click_success = True
-            except Exception as e:
-                print(f"  - ActionChains 클릭 실패: {str(e)}")
+            # headless 환경에서는 JavaScript 클릭 우선 시도
+            if os.getenv('GITHUB_ACTIONS'):
+                try:
+                    self.driver.execute_script("arguments[0].click();", search_button)
+                    print("✓ 검색 버튼 클릭 성공 (JavaScript)")
+                    click_success = True
+                except Exception as e:
+                    print(f"  - JavaScript 클릭 실패: {str(e)}")
+            else:
+                # 로컬 환경에서는 ActionChains 시도
+                try:
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    actions = ActionChains(self.driver)
+                    actions.move_to_element(search_button).click().perform()
+                    print("✓ 검색 버튼 클릭 성공 (ActionChains)")
+                    click_success = True
+                except Exception as e:
+                    print(f"  - ActionChains 클릭 실패: {str(e)}")
             
-            # 방법 3: JavaScript 클릭
+            # 대체 방법: JavaScript 클릭
             if not click_success:
                 try:
                     self.driver.execute_script("arguments[0].click();", search_button)

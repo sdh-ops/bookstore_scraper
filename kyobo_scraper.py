@@ -371,18 +371,19 @@ class KyoboScraper:
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매정보')]"))
             )
             
-            # ActionChains을 사용하여 마우스 호버
-            actions = ActionChains(self.driver)
-            actions.move_to_element(sales_menu).perform()
-            print("✓ 판매정보 메뉴 호버")
-            time.sleep(1)
+            # headless 모드 대응: JavaScript로 직접 클릭
+            print("판매정보 메뉴 클릭 시도..")
+            self.driver.execute_script("arguments[0].click();", sales_menu)
+            print("✓ 판매정보 메뉴 클릭")
+            time.sleep(2)
             
             # 2. 판매조회 서브메뉴 클릭
             print("판매조회 메뉴 찾는 중..")
             sales_inquiry = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '판매조회')]"))
+                EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매조회')]"))
             )
-            sales_inquiry.click()
+            # JavaScript로 클릭
+            self.driver.execute_script("arguments[0].click();", sales_inquiry)
             print("✓ 판매조회 메뉴 클릭")
             time.sleep(3)
             
