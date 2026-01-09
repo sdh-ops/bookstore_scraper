@@ -322,21 +322,26 @@ def main():
     print("\n구글 시트 연결 중...")
     
     # credentials.json 경로 찾기 (로컬과 GitHub Actions 모두 지원)
-    script_dir = os.path.dirname(__file__)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     credentials_paths = [
-        os.path.join(script_dir, 'credentials.json'),  # 같은 폴더 (GitHub Actions)
+        'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
+        os.path.join(script_dir, 'credentials.json'),  # 스크립트와 같은 폴더
         os.path.join(script_dir, '..', 'credentials.json'),  # 상위 폴더 (로컬)
     ]
     
     credentials_path = None
     for path in credentials_paths:
-        if os.path.exists(path):
-            credentials_path = path
+        abs_path = os.path.abspath(path)
+        print(f"  확인 중: {abs_path}")
+        if os.path.exists(abs_path):
+            credentials_path = abs_path
+            print(f"  ✓ 찾음: {credentials_path}")
             break
     
     if not credentials_path:
         print("❌ credentials.json 파일을 찾을 수 없습니다.")
-        print(f"   확인한 경로: {credentials_paths}")
+        print(f"   현재 작업 디렉토리: {os.getcwd()}")
+        print(f"   스크립트 디렉토리: {script_dir}")
         return
     
     print(f"✓ credentials.json 찾음: {credentials_path}")

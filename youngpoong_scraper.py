@@ -30,9 +30,15 @@ class YoungpoongScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
-            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            creds_paths = [
+                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
+                os.path.join(script_dir, 'credentials.json'),
+                os.path.join(script_dir, '..', 'credentials.json'),
+            ]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            if not creds_path:
+                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -124,7 +130,9 @@ class YoungpoongScraper:
         chrome_options = Options()
         # GitHub Actions에서는 headless 모드 필수
         if os.getenv('GITHUB_ACTIONS'):
-            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--headless=new')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--disable-software-rasterizer')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -612,9 +620,15 @@ class YoungpoongScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
-            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            creds_paths = [
+                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
+                os.path.join(script_dir, 'credentials.json'),
+                os.path.join(script_dir, '..', 'credentials.json'),
+            ]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            if not creds_path:
+                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             

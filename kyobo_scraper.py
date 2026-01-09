@@ -81,12 +81,15 @@ class KyoboScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
+            script_dir = os.path.dirname(os.path.abspath(__file__))
             creds_paths = [
+                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
                 os.path.join(script_dir, 'credentials.json'),
                 os.path.join(script_dir, '..', 'credentials.json'),
             ]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            if not creds_path:
+                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
             
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
@@ -179,11 +182,12 @@ class KyoboScraper:
         options = webdriver.ChromeOptions()
         # GitHub Actions에서는 headless 모드 필수
         if os.getenv('GITHUB_ACTIONS'):
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
@@ -694,12 +698,15 @@ class KyoboScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
+            script_dir = os.path.dirname(os.path.abspath(__file__))
             creds_paths = [
+                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
                 os.path.join(script_dir, 'credentials.json'),
                 os.path.join(script_dir, '..', 'credentials.json'),
             ]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            if not creds_path:
+                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
             
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
