@@ -58,7 +58,9 @@ class Yes24Scraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            creds_path = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+            script_dir = os.path.dirname(__file__)
+            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -758,7 +760,9 @@ class Yes24Scraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            creds_path = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+            script_dir = os.path.dirname(__file__)
+            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             

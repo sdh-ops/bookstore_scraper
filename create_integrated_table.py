@@ -320,7 +320,27 @@ def main():
     
     # 구글 시트 연결
     print("\n구글 시트 연결 중...")
-    credentials_path = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+    
+    # credentials.json 경로 찾기 (로컬과 GitHub Actions 모두 지원)
+    script_dir = os.path.dirname(__file__)
+    credentials_paths = [
+        os.path.join(script_dir, 'credentials.json'),  # 같은 폴더 (GitHub Actions)
+        os.path.join(script_dir, '..', 'credentials.json'),  # 상위 폴더 (로컬)
+    ]
+    
+    credentials_path = None
+    for path in credentials_paths:
+        if os.path.exists(path):
+            credentials_path = path
+            break
+    
+    if not credentials_path:
+        print("❌ credentials.json 파일을 찾을 수 없습니다.")
+        print(f"   확인한 경로: {credentials_paths}")
+        return
+    
+    print(f"✓ credentials.json 찾음: {credentials_path}")
+    
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
     gc = gspread.authorize(credentials)

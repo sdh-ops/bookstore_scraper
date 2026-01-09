@@ -28,7 +28,9 @@ class AladinScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            creds_path = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+            script_dir = os.path.dirname(__file__)
+            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -118,6 +120,11 @@ class AladinScraper:
     def setup_driver(self):
         """Chrome 드라이버 설정"""
         chrome_options = Options()
+        # GitHub Actions에서는 headless 모드 필수
+        if os.getenv('GITHUB_ACTIONS'):
+            chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -547,7 +554,9 @@ class AladinScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            creds_path = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+            script_dir = os.path.dirname(__file__)
+            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
+            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
