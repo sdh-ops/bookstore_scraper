@@ -25,11 +25,10 @@ class YoungpoongScraper:
         """구글시트에서 마지막 날짜 확인 후 빠진 날짜들 계산"""
         try:
             print("\n=== 빠진 날짜 확인 ===")
-            
+
             # 구글 시트 연결
-            scope = ['https://spreadsheets.google.com/feeds',
-                     'https://www.googleapis.com/auth/drive']
-            
+            scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
             script_dir = os.path.dirname(os.path.abspath(__file__))
             creds_paths = [
                 'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
@@ -39,88 +38,72 @@ class YoungpoongScraper:
             creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
             if not creds_path:
                 raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
+
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
-            
+
             spreadsheet_id = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
             spreadsheet = client.open_by_key(spreadsheet_id)
-            
+
             # 영풍문고 시트 확인
-            valid_dates = []  # 초기화
-            last_date = None
-            
+            valid_dates = []
+
             try:
                 worksheet = spreadsheet.worksheet("영풍문고")
                 existing_data = worksheet.get_all_values()
-                
+
                 if existing_data and len(existing_data) > 1:
-                    # 조회기간 컬럼에서 가장 최근 날짜 찾기
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
-                    
-                    if '날짜' in df.columns:
+                    # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
+                    if '조회기간' in df.columns:
+                        dates = df['조회기간'].tolist()
+                        print("  조회기간 컬럼 사용")
+                    elif '날짜' in df.columns:
                         dates = df['날짜'].tolist()
-                        # 날짜 형식 필터링
-                        valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
-                        
-                        if valid_dates:
-                            last_date_str = max(valid_dates)
-                            last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
-                            # timezone 추가
-                            korea_tz = pytz.timezone('Asia/Seoul')
-                            last_date = korea_tz.localize(last_date)
-                            print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
-                        else:
-                            # 데이터가 없으면 2026-01-01부터
-                            korea_tz = pytz.timezone('Asia/Seoul')
-                            last_date = korea_tz.localize(datetime(2025, 12, 31))
-                            print(f"✓ 데이터 없음, 2026-01-01부터 시작")
+                        print("  날짜 컬럼 사용")
                     else:
-                        korea_tz = pytz.timezone('Asia/Seoul')
-                        last_date = korea_tz.localize(datetime(2025, 12, 31))
-                        print(f"✓ 날짜 컬럼 없음, 2026-01-01부터 시작")
-                else:
-                    # 시트가 비어있으면 2026-01-01부터
-                    korea_tz = pytz.timezone('Asia/Seoul')
-                    last_date = korea_tz.localize(datetime(2025, 12, 31))
-                    print(f"✓ 시트 비어있음, 2026-01-01부터 시작")
+                        dates = []
+                        print("  날짜 관련 컬럼 없음")
+
+                    # 날짜 형식 필터링 (YYYY-MM-DD)
+                    valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
+                    if valid_dates:
+                        last_date_str = max(valid_dates)
+                        print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
+                    else:
+                        print(f"✓ 데이터 없음, 2026-01-01부터 시작")
             except:
-                # 영풍문고 시트가 없으면 2026-01-01부터
-                korea_tz = pytz.timezone('Asia/Seoul')
-                last_date = korea_tz.localize(datetime(2025, 12, 31))
                 print(f"✓ 영풍문고 시트 없음, 2026-01-01부터 시작")
-            
+
             # 2026-01-01부터 어제까지 모든 날짜 생성
             korea_tz = pytz.timezone('Asia/Seoul')
             start_date = datetime(2026, 1, 1)
             today = datetime.now(korea_tz).replace(tzinfo=None)
             yesterday = today - timedelta(days=1)
-            
-            # 모든 날짜 생성
+
             all_dates = []
             current = start_date
             while current <= yesterday:
                 all_dates.append(current.strftime('%Y-%m-%d'))
                 current += timedelta(days=1)
-            
-            # 빠진 날짜 = 모든 날짜 - 시트에 있는 날짜
+
             existing_dates_set = set(valid_dates) if valid_dates else set()
             missing_dates = [d for d in all_dates if d not in existing_dates_set]
             missing_dates.sort()
-            
+
             if missing_dates:
                 print(f"✓ 빠진 날짜: {len(missing_dates)}일")
                 for date in missing_dates:
                     print(f"  - {date}")
             else:
                 print("✓ 빠진 날짜 없음 (최신 상태)")
-            
+
             return missing_dates
-            
+
         except Exception as e:
             print(f"날짜 확인 오류: {str(e)}")
             import traceback
             traceback.print_exc()
-            # 오류 시 어제 날짜만 반환
             korea_tz = pytz.timezone('Asia/Seoul')
             yesterday = datetime.now(korea_tz) - timedelta(days=1)
             return [yesterday.strftime('%Y-%m-%d')]
@@ -160,6 +143,49 @@ class YoungpoongScraper:
         
         self.wait = WebDriverWait(self.driver, 10)
         print("✓ Chrome 드라이버 설정 완료")
+        
+    def safe_click(self, element, timeout=5):
+        """robust click helper: scroll, try native click, then JS click, then ancestor click"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+        except Exception:
+            pass
+
+        # try native click if element has size
+        try:
+            size = element.size if element else None
+            if size and size.get('width', 0) > 0 and size.get('height', 0) > 0:
+                try:
+                    element.click()
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # try JS click
+        try:
+            self.driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception:
+            pass
+
+        # try clicking ancestor nodes
+        try:
+            el = element
+            for _ in range(4):
+                parent = self.driver.execute_script("return arguments[0].parentNode;", el)
+                if not parent:
+                    break
+                try:
+                    self.driver.execute_script("arguments[0].click();", parent)
+                    return True
+                except Exception:
+                    el = parent
+        except Exception:
+            pass
+
+        return False
         
     def login(self, user_id, password):
         """영풍문고 SCM 로그인"""

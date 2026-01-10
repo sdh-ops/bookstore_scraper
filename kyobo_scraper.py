@@ -102,20 +102,44 @@ class KyoboScraper:
             try:
                 worksheet = spreadsheet.worksheet("교보문고")
                 print("✓ '교보문고' 시트 찾음")
+                # 기존 데이터 가져오기
+                existing_data = worksheet.get_all_values()
             except gspread.WorksheetNotFound:
-                print("✓ '교보문고' 시트가 비어있음 - 어제 날짜 반환")
-                korea_tz = pytz.timezone('Asia/Seoul')
-                yesterday = datetime.now(korea_tz) - timedelta(days=1)
-                return [yesterday.strftime('%Y-%m-%d')]
-            
-            # 기존 데이터 가져오기
-            existing_data = worksheet.get_all_values()
-            
+                # 시트가 없으면 2026-01-01부터 수집하도록 처리
+                print("✓ '교보문고' 시트 없음, 2026-01-01부터 시작")
+                existing_data = []
+
             if not existing_data or len(existing_data) <= 1:
-                print("✓ 시트가 비어있음 - 어제 날짜 반환")
-                korea_tz = pytz.timezone('Asia/Seoul')
-                yesterday = datetime.now(korea_tz) - timedelta(days=1)
-                return [yesterday.strftime('%Y-%m-%d')]
+                print("✓ 시트가 비어있음 또는 데이터 부족 - 2026-01-01부터 시작")
+                valid_dates = []
+            else:
+                # DataFrame으로 변환
+                df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
+                # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
+                if '조회기간' in df.columns:
+                    dates_raw = df['조회기간'].tolist()
+                    print("  조회기간 컬럼 사용")
+                elif '날짜' in df.columns:
+                    dates_raw = df['날짜'].tolist()
+                    print("  날짜 컬럼 사용")
+                else:
+                    dates_raw = []
+                    print("  날짜 관련 컬럼 없음 - 2026-01-01부터 시작")
+
+                # YYYY-MM-DD 형식의 날짜만 추출
+                valid_dates = []
+                for d in dates_raw:
+                    d_str = str(d).strip()
+                    if len(d_str) == 10 and d_str.count('-') == 2:
+                        try:
+                            datetime.strptime(d_str, '%Y-%m-%d')
+                            valid_dates.append(d_str)
+                        except:
+                            pass
+                print(f"✓ 기존 날짜 개수: {len(valid_dates)}개")
+                if valid_dates:
+                    print(f"  최근 날짜: {max(valid_dates)}")
+                    print(f"  가장 오래된 날짜: {min(valid_dates)}")
             
             # DataFrame으로 변환
             df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
@@ -146,13 +170,17 @@ class KyoboScraper:
                 print(f"  최근 날짜: {max(valid_dates)}")
                 print(f"  가장 오래된 날짜: {min(valid_dates)}")
             
-            # 최근 30일 날짜 생성
+            # 2026-01-01부터 어제까지 모든 날짜 생성
             korea_tz = pytz.timezone('Asia/Seoul')
-            today = datetime.now(korea_tz)
+            start_date = datetime(2026, 1, 1)
+            today = datetime.now(korea_tz).replace(tzinfo=None)
+            yesterday = today - timedelta(days=1)
+
             all_dates = []
-            for i in range(1, 31):  # 어제부터 30일 전까지
-                date = today - timedelta(days=i)
-                all_dates.append(date.strftime('%Y-%m-%d'))
+            current = start_date
+            while current <= yesterday:
+                all_dates.append(current.strftime('%Y-%m-%d'))
+                current += timedelta(days=1)
             
             # 빠진 날짜 = 모든 날짜 - 시트에 있는 날짜
             existing_dates_set = set(valid_dates) if valid_dates else set()
@@ -219,6 +247,49 @@ class KyoboScraper:
         except Exception as e:
             print(f"드라이버 설정 오류: {str(e)}")
             raise
+
+    def safe_click(self, element, timeout=5):
+        """robust click helper: scroll, try native click, then JS click, then ancestor click"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+        except Exception:
+            pass
+
+        # try native click if element has size
+        try:
+            size = element.size if element else None
+            if size and size.get('width', 0) > 0 and size.get('height', 0) > 0:
+                try:
+                    element.click()
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # try JS click
+        try:
+            self.driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception:
+            pass
+
+        # try clicking ancestor nodes
+        try:
+            el = element
+            for _ in range(4):
+                parent = self.driver.execute_script("return arguments[0].parentNode;", el)
+                if not parent:
+                    break
+                try:
+                    self.driver.execute_script("arguments[0].click();", parent)
+                    return True
+                except Exception:
+                    el = parent
+        except Exception:
+            pass
+
+        return False
         
     def login(self):
         """교보문고 SCM 로그인"""
@@ -371,10 +442,12 @@ class KyoboScraper:
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매정보')]"))
             )
             
-            # headless 모드 대응: JavaScript로 직접 클릭
+            # headless 모드 대응: 안전한 클릭 시도
             print("판매정보 메뉴 클릭 시도..")
-            self.driver.execute_script("arguments[0].click();", sales_menu)
-            print("✓ 판매정보 메뉴 클릭")
+            if self.safe_click(sales_menu):
+                print("✓ 판매정보 메뉴 클릭")
+            else:
+                print("✗ 판매정보 메뉴 클릭 실패")
             time.sleep(2)
             
             # 2. 판매조회 서브메뉴 클릭
@@ -382,9 +455,11 @@ class KyoboScraper:
             sales_inquiry = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매조회')]"))
             )
-            # JavaScript로 클릭
-            self.driver.execute_script("arguments[0].click();", sales_inquiry)
-            print("✓ 판매조회 메뉴 클릭")
+            # 안전한 클릭 시도
+            if self.safe_click(sales_inquiry):
+                print("✓ 판매조회 메뉴 클릭")
+            else:
+                print("✗ 판매조회 메뉴 클릭 실패")
             time.sleep(3)
             
             # 3. 조회기간 설정
@@ -502,9 +577,11 @@ class KyoboScraper:
                 if 'blue' in btn_class and btn_text == '조회':
                     print(f"\n✓ 실제 조회 버튼 찾음! (class: {btn_class})")
                     try:
-                        self.driver.execute_script("arguments[0].click();", btn)
-                        print("✓ 조회 버튼 클릭 성공")
-                        
+                        if self.safe_click(btn):
+                            print("✓ 조회 버튼 클릭 성공")
+                        else:
+                            raise Exception("조회 버튼 클릭 시도 실패")
+
                         # 데이터 로딩 대기 - 조회영역 테이블이 업데이트될때까지 기다림
                         print("조회 결과 로딩 대기중..")
                         time.sleep(30)  # 초기 대기시간 30초로 증가
@@ -542,9 +619,11 @@ class KyoboScraper:
                     EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '엑셀다운')] | //button[contains(text(), '엑셀다운')]"))
                 )
                 
-                # JavaScript로 클릭
-                self.driver.execute_script("arguments[0].click();", excel_button)
-                print("✓ 엑셀 다운로드 버튼 클릭")
+                # 안전한 클릭으로 엑셀 다운로드 시도
+                if self.safe_click(excel_button):
+                    print("✓ 엑셀 다운로드 버튼 클릭")
+                else:
+                    print("✗ 엑셀 다운로드 버튼 클릭 실패")
                 
                 # 다운로드 완료 대기
                 print("다운로드 완료 대기중..")

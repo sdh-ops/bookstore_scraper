@@ -52,30 +52,35 @@ class AladinScraper:
                 existing_data = worksheet.get_all_values()
                 
                 if existing_data and len(existing_data) > 1:
-                    # 조회기간 컬럼에서 가장 최근 날짜 찾기
+                    # 조회기간 또는 날짜 컬럼에서 가장 최근 날짜 찾기
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
-                    
-                    if '날짜' in df.columns:
+
+                    # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
+                    if '조회기간' in df.columns:
+                        dates = df['조회기간'].tolist()
+                        print("  조회기간 컬럼 사용")
+                    elif '날짜' in df.columns:
                         dates = df['날짜'].tolist()
-                        # 날짜 형식 필터링
-                        valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
-                        
-                        if valid_dates:
-                            last_date_str = max(valid_dates)
-                            last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
-                            # timezone 추가
-                            korea_tz = pytz.timezone('Asia/Seoul')
-                            last_date = korea_tz.localize(last_date)
-                            print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
-                        else:
-                            # 데이터가 없으면 2026-01-01부터
-                            korea_tz = pytz.timezone('Asia/Seoul')
-                            last_date = korea_tz.localize(datetime(2025, 12, 31))
-                            print(f"✓ 데이터 없음, 2026-01-01부터 시작")
+                        print("  날짜 컬럼 사용")
                     else:
+                        dates = []
+                        print("  날짜 관련 컬럼 없음")
+
+                    # 날짜 형식 필터링
+                    valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
+
+                    if valid_dates:
+                        last_date_str = max(valid_dates)
+                        last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
+                        # timezone 추가
+                        korea_tz = pytz.timezone('Asia/Seoul')
+                        last_date = korea_tz.localize(last_date)
+                        print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
+                    else:
+                        # 데이터가 없으면 2026-01-01부터
                         korea_tz = pytz.timezone('Asia/Seoul')
                         last_date = korea_tz.localize(datetime(2025, 12, 31))
-                        print(f"✓ 조회기간 컬럼 없음, 2026-01-01부터 시작")
+                        print(f"✓ 데이터 없음, 2026-01-01부터 시작")
                 else:
                     # 시트가 비어있으면 2026-01-01부터
                     korea_tz = pytz.timezone('Asia/Seoul')
@@ -158,6 +163,49 @@ class AladinScraper:
         
         self.wait = WebDriverWait(self.driver, 10)
         print("✓ Chrome 드라이버 설정 완료")
+
+    def safe_click(self, element, timeout=5):
+        """robust click helper: scroll, try native click, then JS click, then ancestor click"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+        except Exception:
+            pass
+
+        # try native click if element has size
+        try:
+            size = element.size if element else None
+            if size and size.get('width', 0) > 0 and size.get('height', 0) > 0:
+                try:
+                    element.click()
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # try JS click
+        try:
+            self.driver.execute_script("arguments[0].click();", element)
+            return True
+        except Exception:
+            pass
+
+        # try clicking ancestor nodes
+        try:
+            el = element
+            for _ in range(4):
+                parent = self.driver.execute_script("return arguments[0].parentNode;", el)
+                if not parent:
+                    break
+                try:
+                    self.driver.execute_script("arguments[0].click();", parent)
+                    return True
+                except Exception:
+                    el = parent
+        except Exception:
+            pass
+
+        return False
     
     def validate_data_integrity(self, df, target_date, worksheet):
         """데이터 무결성 검수"""
@@ -283,9 +331,12 @@ class AladinScraper:
             if not login_button:
                 print("⚠ 로그인 버튼을 찾을 수 없습니다.")
                 return False
-                
-            login_button.click()
-            print("✓ 로그인 버튼 클릭")
+
+            # 안전하게 클릭
+            if self.safe_click(login_button):
+                print("✓ 로그인 버튼 클릭")
+            else:
+                print("✗ 로그인 버튼 클릭 실패, 시도는 했습니다")
             
             time.sleep(3)
             
@@ -341,9 +392,11 @@ class AladinScraper:
                         pass
                 return False
             
-            # 메뉴 클릭
-            self.driver.execute_script("arguments[0].click();", sales_menu)
-            print("✓ 판매 통계 메뉴 클릭")
+            # 메뉴 클릭 (안전한 클릭 시도)
+            if self.safe_click(sales_menu):
+                print("✓ 판매 통계 메뉴 클릭")
+            else:
+                print("✗ 판매 통계 메뉴 클릭 실패")
             time.sleep(3)
             
             # 2. 날짜 설정

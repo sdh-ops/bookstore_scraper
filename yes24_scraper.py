@@ -78,15 +78,23 @@ class Yes24Scraper:
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
                     print(f"  전체 데이터 행 수: {len(df)}")
                     
-                    if '날짜' in df.columns:
+                    # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
+                    if '조회기간' in df.columns:
+                        dates = df['조회기간'].tolist()
+                        print("  조회기간 컬럼 사용")
+                    elif '날짜' in df.columns:
                         dates = df['날짜'].tolist()
-                        # 날짜 형식 필터링 (YYYY-MM-DD)
-                        valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d and d.count('-') == 2]
-                        existing_dates = set(valid_dates)
-                        
-                        print(f"  유효한 날짜 개수: {len(existing_dates)}개")
-                        if existing_dates:
-                            print(f"  날짜 범위: {min(existing_dates)} ~ {max(existing_dates)}")
+                        print("  날짜 컬럼 사용")
+                    else:
+                        dates = []
+                        print("  날짜 관련 컬럼 없음")
+                    # 날짜 형식 필터링 (YYYY-MM-DD)
+                    valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d and d.count('-') == 2]
+                    existing_dates = set(valid_dates)
+
+                    print(f"  유효한 날짜 개수: {len(existing_dates)}개")
+                    if existing_dates:
+                        print(f"  날짜 범위: {min(existing_dates)} ~ {max(existing_dates)}")
             except:
                 print(f"✓ YES24 시트 없음 또는 비어있음")
             
@@ -115,19 +123,6 @@ class Yes24Scraper:
                     print(f"  ... 외 {len(missing_dates) - 10}일")
             else:
                 print("✓ 빠진 날짜 없음 (2026-01-01부터 최신 상태)")
-            
-            return missing_dates
-            
-            while current <= yesterday:
-                missing_dates.append(current.strftime('%Y-%m-%d'))
-                current += timedelta(days=1)
-            
-            if missing_dates:
-                print(f"✓ 빠진 날짜: {len(missing_dates)}일")
-                for date in missing_dates:
-                    print(f"  - {date}")
-            else:
-                print("✓ 빠진 날짜 없음 (최신 상태)")
             
             return missing_dates
             
