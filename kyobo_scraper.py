@@ -61,11 +61,26 @@ class KyoboScraper:
     def login(self):
         self.driver.get("https://scm.kyobobook.co.kr/scm/login.action")
         WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//input"))
+            EC.presence_of_element_located((By.ID, "ipt_userId"))
         )
-        self.driver.find_element(By.XPATH, "//input[@type='text']").send_keys(self.user)
-        self.driver.find_element(By.XPATH, "//input[@type='password']").send_keys(self.pw)
-        self.driver.find_element(By.XPATH, "//button | //input[@type='submit']").click()
+        time.sleep(2)
+        
+        # Find and fill username using ID
+        user_field = self.driver.find_element(By.ID, "ipt_userId")
+        user_field.clear()
+        user_field.send_keys(self.user)
+        time.sleep(0.5)
+        
+        # Find and fill password using ID
+        pw_field = self.driver.find_element(By.ID, "ipt_password")
+        pw_field.clear()
+        pw_field.send_keys(self.pw)
+        time.sleep(0.5)
+        
+        # Click login button using ID
+        login_btn = self.driver.find_element(By.ID, "btn_login")
+        login_btn.click()
+        
         time.sleep(5)
         return "login" not in self.driver.current_url
 
@@ -100,29 +115,40 @@ class KyoboScraper:
     def scrape_date(self, date_str):
         self.driver.get("https://scm.kyobobook.co.kr/scm/page.action?pageID=saleStockInfo")
         WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(),'조회기간')]"))
+            EC.presence_of_element_located((By.ID, "sel_strDateFrom_input"))
         )
+        time.sleep(2)
 
         ymd = date_str.replace("-", "")
-        row = self.driver.find_element(By.XPATH, "//*[contains(text(),'조회기간')]/ancestor::tr")
-        inputs = row.find_elements(By.XPATH, ".//input[@type='text']")
-        self.driver.execute_script("arguments[0].value = arguments[1];", inputs[0], ymd)
-        self.driver.execute_script("arguments[0].value = arguments[1];", inputs[1], ymd)
+        
+        # Set start date
+        start_input = self.driver.find_element(By.ID, "sel_strDateFrom_input")
+        self.driver.execute_script("arguments[0].value = '';", start_input)
+        self.driver.execute_script("arguments[0].value = arguments[1];", start_input, ymd)
+        time.sleep(0.3)
+        
+        # Set end date
+        end_input = self.driver.find_element(By.ID, "sel_strDateTo_input")
+        self.driver.execute_script("arguments[0].value = '';", end_input)
+        self.driver.execute_script("arguments[0].value = arguments[1];", end_input, ymd)
+        time.sleep(0.5)
 
-        for b in self.driver.find_elements(By.XPATH, "//a | //button"):
-            if b.text.strip() == "조회" and "blue" in (b.get_attribute("class") or ""):
-                self.driver.execute_script("arguments[0].click();", b)
-                break
+        # Click search button
+        search_btn = self.driver.find_element(By.ID, "btn_search")
+        self.driver.execute_script("arguments[0].click();", search_btn)
+        time.sleep(3)
 
+        # Wait for data to load
         for _ in range(30):
             if len(self.driver.find_elements(By.XPATH, "//table//tr[td]")) > 1:
                 break
             time.sleep(1)
 
-        excel = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'엑셀다운')]"))
+        # Click Excel download button
+        excel_btn = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.ID, "btn_ExcelDown"))
         )
-        self.driver.execute_script("arguments[0].click();", excel)
+        self.driver.execute_script("arguments[0].click();", excel_btn)
         time.sleep(10)
         return True
 
