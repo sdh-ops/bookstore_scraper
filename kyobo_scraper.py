@@ -1,5 +1,5 @@
-"""
-교보문고 SCM 로그인 및 판매 데이터 스크랩
+﻿"""
+援먮낫臾멸퀬 SCM 濡쒓렇??諛??먮ℓ ?곗씠???ㅽ겕??
 """
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -46,17 +46,17 @@ class KyoboScraper:
         self.download_dir = os.path.join(os.getcwd(), "downloads")
         self.default_download_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         
-        # 다운로드 폴더 생성
+        # ?ㅼ슫濡쒕뱶 ?대뜑 ?앹꽦
         if not os.path.exists(self.download_dir):
             os.makedirs(self.download_dir)
-            print(f"다운로드 폴더 생성: {self.download_dir}")
+            print(f"?ㅼ슫濡쒕뱶 ?대뜑 ?앹꽦: {self.download_dir}")
     
     def get_missing_dates_from_sheet(self):
-        """구글시트에서 마지막 날짜 확인 후 빠진 날짜들 계산"""
+        """援ш??쒗듃?먯꽌 留덉?留??좎쭨 ?뺤씤 ??鍮좎쭊 ?좎쭨??怨꾩궛"""
         try:
-            print("\n=== 빠진 날짜 확인 ===")
+            print("\n=== 鍮좎쭊 ?좎쭨 ?뺤씤 ===")
             
-            # 구글 시트 연결
+            # 援ш? ?쒗듃 ?곌껐
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
@@ -69,88 +69,88 @@ class KyoboScraper:
             spreadsheet_id = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
             spreadsheet = client.open_by_key(spreadsheet_id)
             
-            # 교보문고 시트 확인
-            valid_dates = []  # 초기화
+            # 援먮낫臾멸퀬 ?쒗듃 ?뺤씤
+            valid_dates = []  # 珥덇린??
             last_date = None
             
             try:
-                worksheet = spreadsheet.worksheet("교보문고")
+                worksheet = spreadsheet.worksheet("援먮낫臾멸퀬")
                 existing_data = worksheet.get_all_values()
                 
                 if existing_data and len(existing_data) > 1:
-                    # 조회기간 컬럼에서 가장 최근 날짜 찾기
+                    # 議고쉶湲곌컙 而щ읆?먯꽌 媛??理쒓렐 ?좎쭨 李얘린
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
                     
-                    if '날짜' in df.columns:
-                        dates = df['날짜'].tolist()
-                        # 날짜 형식 필터링
+                    if '?좎쭨' in df.columns:
+                        dates = df['?좎쭨'].tolist()
+                        # ?좎쭨 ?뺤떇 ?꾪꽣留?
                         valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
                         
                         if valid_dates:
                             last_date_str = max(valid_dates)
                             last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
-                            # timezone 추가
+                            # timezone 異붽?
                             korea_tz = pytz.timezone('Asia/Seoul')
                             last_date = korea_tz.localize(last_date)
-                            print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
+                            print(f"??援ш??쒗듃 留덉?留??곗씠?? {last_date_str}")
                         else:
-                            # 데이터가 없으면 2026-01-01부터
+                            # ?곗씠?곌? ?놁쑝硫?2026-01-01遺??
                             korea_tz = pytz.timezone('Asia/Seoul')
                             last_date = korea_tz.localize(datetime(2025, 12, 31))
-                            print(f"✓ 데이터 없음, 2026-01-01부터 시작")
+                            print(f"???곗씠???놁쓬, 2026-01-01遺???쒖옉")
                     else:
                         korea_tz = pytz.timezone('Asia/Seoul')
                         last_date = korea_tz.localize(datetime(2025, 12, 31))
-                        print(f"✓ 날짜 컬럼 없음, 2026-01-01부터 시작")
+                        print(f"???좎쭨 而щ읆 ?놁쓬, 2026-01-01遺???쒖옉")
                 else:
-                    # 시트가 비어있으면 2026-01-01부터
+                    # ?쒗듃媛 鍮꾩뼱?덉쑝硫?2026-01-01遺??
                     korea_tz = pytz.timezone('Asia/Seoul')
                     last_date = korea_tz.localize(datetime(2025, 12, 31))
-                    print(f"✓ 시트 비어있음, 2026-01-01부터 시작")
+                    print(f"???쒗듃 鍮꾩뼱?덉쓬, 2026-01-01遺???쒖옉")
             except:
-                # 교보문고 시트가 없으면 2026-01-01부터
+                # 援먮낫臾멸퀬 ?쒗듃媛 ?놁쑝硫?2026-01-01遺??
                 korea_tz = pytz.timezone('Asia/Seoul')
                 last_date = korea_tz.localize(datetime(2025, 12, 31))
-                print(f"✓ 교보문고 시트 없음, 2026-01-01부터 시작")
+                print(f"??援먮낫臾멸퀬 ?쒗듃 ?놁쓬, 2026-01-01遺???쒖옉")
             
-            # 2026-01-01부터 어제까지 모든 날짜 생성
+            # 2026-01-01遺???댁젣源뚯? 紐⑤뱺 ?좎쭨 ?앹꽦
             korea_tz = pytz.timezone('Asia/Seoul')
             start_date = datetime(2026, 1, 1)
             today = datetime.now(korea_tz).replace(tzinfo=None)
             yesterday = today - timedelta(days=1)
             
-            # 모든 날짜 생성
+            # 紐⑤뱺 ?좎쭨 ?앹꽦
             all_dates = []
             current = start_date
             while current <= yesterday:
                 all_dates.append(current.strftime('%Y-%m-%d'))
                 current += timedelta(days=1)
             
-            # 빠진 날짜 = 모든 날짜 - 시트에 있는 날짜
+            # 鍮좎쭊 ?좎쭨 = 紐⑤뱺 ?좎쭨 - ?쒗듃???덈뒗 ?좎쭨
             existing_dates_set = set(valid_dates) if valid_dates else set()
             missing_dates = [d for d in all_dates if d not in existing_dates_set]
             missing_dates.sort()
             
             if missing_dates:
-                print(f"✓ 빠진 날짜: {len(missing_dates)}일")
+                print(f"??鍮좎쭊 ?좎쭨: {len(missing_dates)}??)
                 for date in missing_dates:
                     print(f"  - {date}")
             else:
-                print("✓ 빠진 날짜 없음 (최신 상태)")
+                print("??鍮좎쭊 ?좎쭨 ?놁쓬 (理쒖떊 ?곹깭)")
             
             return missing_dates
             
         except Exception as e:
-            print(f"날짜 확인 오류: {str(e)}")
+            print(f"?좎쭨 ?뺤씤 ?ㅻ쪟: {str(e)}")
             import traceback
             traceback.print_exc()
-            # 오류 시 어제 날짜만 반환
+            # ?ㅻ쪟 ???댁젣 ?좎쭨留?諛섑솚
             korea_tz = pytz.timezone('Asia/Seoul')
             yesterday = datetime.now(korea_tz) - timedelta(days=1)
             return [yesterday.strftime('%Y-%m-%d')]
         
     def setup_driver(self):
-        """Chrome 드라이버 설정"""
+        """Chrome ?쒕씪?대쾭 ?ㅼ젙"""
         options = webdriver.ChromeOptions()
         # Enable headless in CI or when HEADLESS env is set
         if os.getenv('GITHUB_ACTIONS') or os.getenv('CI') or os.getenv('HEADLESS') == '1':
@@ -167,7 +167,7 @@ class KyoboScraper:
         options.add_experimental_option('useAutomationExtension', False)
         options.page_load_strategy = 'normal'
         
-        # 다운로드 경로 설정
+        # ?ㅼ슫濡쒕뱶 寃쎈줈 ?ㅼ젙
         prefs = {
             "download.default_directory": self.download_dir,
             "download.prompt_for_download": False,
@@ -177,41 +177,41 @@ class KyoboScraper:
         options.add_experimental_option("prefs", prefs)
         
         try:
-            # ChromeDriverManager 캐시 사용 또는 시스템 PATH의 chromedriver 사용
+            # ChromeDriverManager 罹먯떆 ?ъ슜 ?먮뒗 ?쒖뒪??PATH??chromedriver ?ъ슜
             try:
                 self.driver = webdriver.Chrome(
                     service=Service(ChromeDriverManager().install()),
                     options=options
                 )
             except:
-                # ChromeDriverManager 실패 시 시스템의 chromedriver 사용
-                print("⚠ ChromeDriverManager 실패, 시스템 chromedriver 사용")
+                # ChromeDriverManager ?ㅽ뙣 ???쒖뒪?쒖쓽 chromedriver ?ъ슜
+                print("??ChromeDriverManager ?ㅽ뙣, ?쒖뒪??chromedriver ?ъ슜")
                 self.driver = webdriver.Chrome(options=options)
             
             self.driver.maximize_window()
-            print("✓ Chrome 드라이버 설정 완료")
+            print("??Chrome ?쒕씪?대쾭 ?ㅼ젙 ?꾨즺")
         except Exception as e:
-            print(f"드라이버 설정 오류: {str(e)}")
+            print(f"?쒕씪?대쾭 ?ㅼ젙 ?ㅻ쪟: {str(e)}")
             raise
                     
-                    # 종료일 설정 - 기존 값 지우고 새로 입력
+                    # 醫낅즺???ㅼ젙 - 湲곗〈 媛?吏?곌퀬 ?덈줈 ?낅젰
                     end_field = date_inputs[1]
-                    print(f"종료일 필드 현재 값: '{end_field.get_attribute('value')}'")
-                    # 기존 값 완전히 삭제
+                    print(f"醫낅즺???꾨뱶 ?꾩옱 媛? '{end_field.get_attribute('value')}'")
+                    # 湲곗〈 媛??꾩쟾????젣
                     self.driver.execute_script("arguments[0].value = '';", end_field)
                     time.sleep(0.3)
-                    # 새 값 입력
+                    # ??媛??낅젰
                     self.driver.execute_script("arguments[0].value = arguments[1];", end_field, yesterday_str)
-                    print(f"✓ 종료일 설정: {yesterday_str} (id: {end_field.get_attribute('id')})")
+                    print(f"??醫낅즺???ㅼ젙: {yesterday_str} (id: {end_field.get_attribute('id')})")
                     time.sleep(0.5)
                 else:
-                    print(f"⚠ 조회기간 행에서 충분한 input 필드를 찾지 못했습니다: {len(date_inputs)}개")
+                    print(f"??議고쉶湲곌컙 ?됱뿉??異⑸텇??input ?꾨뱶瑜?李얠? 紐삵뻽?듬땲?? {len(date_inputs)}媛?)
                     
             except Exception as e:
-                print(f"조회기간 행 찾기 실패: {str(e)}")
-                print("\n페이지의 모든 행 구조 확인 중...")
+                print(f"議고쉶湲곌컙 ??李얘린 ?ㅽ뙣: {str(e)}")
+                print("\n?섏씠吏??紐⑤뱺 ??援ъ“ ?뺤씤 以?..")
                 
-                # 모든 tr 요소 확인
+                # 紐⑤뱺 tr ?붿냼 ?뺤씤
                 all_rows = self.driver.find_elements(By.XPATH, "//tr")
                 for idx, row in enumerate(all_rows[:20]):
                     row_text = row.text[:100] if row.text else ""
@@ -222,107 +222,107 @@ class KyoboScraper:
             
             time.sleep(1)
             
-            # 4. 조회 버튼 클릭
-            print("\n조회 버튼 클릭 중...")
+            # 4. 議고쉶 踰꾪듉 ?대┃
+            print("\n議고쉶 踰꾪듉 ?대┃ 以?..")
             
-            # 먼저 모든 버튼 출력 (디버깅)
+            # 癒쇱? 紐⑤뱺 踰꾪듉 異쒕젰 (?붾쾭源?
             all_buttons = self.driver.find_elements(By.XPATH, "//a | //button")
-            print(f"\n페이지의 모든 버튼/링크 확인 중... (총 {len(all_buttons)}개)")
+            print(f"\n?섏씠吏??紐⑤뱺 踰꾪듉/留곹겕 ?뺤씤 以?.. (珥?{len(all_buttons)}媛?")
             
-            조회_buttons = []
+            議고쉶_buttons = []
             for idx, btn in enumerate(all_buttons):
                 btn_text = btn.text.strip()
-                if '조회' in btn_text:
+                if '議고쉶' in btn_text:
                     btn_class = btn.get_attribute('class') or ''
                     btn_id = btn.get_attribute('id') or ''
                     print(f"  [{idx}] text='{btn_text}', class='{btn_class}', id='{btn_id}'")
-                    조회_buttons.append(btn)
+                    議고쉶_buttons.append(btn)
             
-            # 'btn blue' 클래스를 가진 조회 버튼 찾기 (파란색 조회 버튼)
+            # 'btn blue' ?대옒?ㅻ? 媛吏?議고쉶 踰꾪듉 李얘린 (?뚮???議고쉶 踰꾪듉)
             search_button_found = False
-            for btn in 조회_buttons:
+            for btn in 議고쉶_buttons:
                 btn_class = btn.get_attribute('class') or ''
                 btn_text = btn.text.strip()
                 
-                # 'blue'가 클래스에 포함되고 텍스트가 '조회'인 버튼
-                if 'blue' in btn_class and btn_text == '조회':
-                    print(f"\n✓ 파란색 조회 버튼 찾음! (class: {btn_class})")
+                # 'blue'媛 ?대옒?ㅼ뿉 ?ы븿?섍퀬 ?띿뒪?멸? '議고쉶'??踰꾪듉
+                if 'blue' in btn_class and btn_text == '議고쉶':
+                    print(f"\n???뚮???議고쉶 踰꾪듉 李얠쓬! (class: {btn_class})")
                     try:
                         self.driver.execute_script("arguments[0].click();", btn)
-                        print("✓ 조회 버튼 클릭 성공")
+                        print("??議고쉶 踰꾪듉 ?대┃ ?깃났")
                         
-                        # 데이터 로딩 대기 - 조회내역 테이블이 업데이트될 때까지 기다림
-                        print("조회 결과 로딩 대기 중...")
-                        time.sleep(30)  # 초기 대기 시간 30초로 증가
+                        # ?곗씠??濡쒕뵫 ?湲?- 議고쉶?댁뿭 ?뚯씠釉붿씠 ?낅뜲?댄듃???뚭퉴吏 湲곕떎由?
+                        print("議고쉶 寃곌낵 濡쒕뵫 ?湲?以?..")
+                        time.sleep(30)  # 珥덇린 ?湲??쒓컙 30珥덈줈 利앷?
                         
-                        # 조회내역 테이블에 데이터가 있는지 확인
-                        for i in range(10):  # 추가 10초 대기
+                        # 議고쉶?댁뿭 ?뚯씠釉붿뿉 ?곗씠?곌? ?덈뒗吏 ?뺤씤
+                        for i in range(10):  # 異붽? 10珥??湲?
                             try:
-                                # ISBN 컬럼이 있는 행 찾기 (데이터가 있다는 의미)
+                                # ISBN 而щ읆???덈뒗 ??李얘린 (?곗씠?곌? ?덈떎???섎?)
                                 data_rows = self.driver.find_elements(By.XPATH, "//table//tr[td]")
-                                if len(data_rows) > 1:  # 헤더 외에 데이터 행이 있으면
-                                    print(f"✓ 조회 결과 로딩 완료! (데이터 행: {len(data_rows)}개)")
+                                if len(data_rows) > 1:  # ?ㅻ뜑 ?몄뿉 ?곗씠???됱씠 ?덉쑝硫?
+                                    print(f"??議고쉶 寃곌낵 濡쒕뵫 ?꾨즺! (?곗씠???? {len(data_rows)}媛?")
                                     break
                             except:
                                 pass
                             time.sleep(1)
-                            print(f"  추가 대기 중... ({i+1}초)")
+                            print(f"  異붽? ?湲?以?.. ({i+1}珥?")
                         
-                        time.sleep(3)  # 추가 안정화 대기
-                        print("✓ 데이터 로딩 완료 - 엑셀 다운로드 준비")
+                        time.sleep(3)  # 異붽? ?덉젙???湲?
+                        print("???곗씠??濡쒕뵫 ?꾨즺 - ?묒? ?ㅼ슫濡쒕뱶 以鍮?)
                         search_button_found = True
                         break
                     except Exception as e:
-                        print(f"클릭 실패: {str(e)}")
+                        print(f"?대┃ ?ㅽ뙣: {str(e)}")
             
             if not search_button_found:
-                print("⚠ blue 클래스 조회 버튼을 찾지 못했습니다.")
+                print("??blue ?대옒??議고쉶 踰꾪듉??李얠? 紐삵뻽?듬땲??")
             
-            # 5. 엑셀 다운로드 버튼 클릭
-            print("\n엑셀 다운로드 버튼 찾는 중...")
+            # 5. ?묒? ?ㅼ슫濡쒕뱶 踰꾪듉 ?대┃
+            print("\n?묒? ?ㅼ슫濡쒕뱶 踰꾪듉 李얜뒗 以?..")
             try:
-                # 엑셀다운 버튼 찾기 - 모달이 닫힐 때까지 대기
+                # ?묒??ㅼ슫 踰꾪듉 李얘린 - 紐⑤떖???ロ옄 ?뚭퉴吏 ?湲?
                 time.sleep(2)
                 
                 excel_button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '엑셀다운')] | //button[contains(text(), '엑셀다운')]"))
+                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '?묒??ㅼ슫')] | //button[contains(text(), '?묒??ㅼ슫')]"))
                 )
                 
-                # JavaScript로 클릭
+                # JavaScript濡??대┃
                 self.driver.execute_script("arguments[0].click();", excel_button)
-                print("✓ 엑셀 다운로드 버튼 클릭")
+                print("???묒? ?ㅼ슫濡쒕뱶 踰꾪듉 ?대┃")
                 
-                # 다운로드 완료 대기
-                print("다운로드 완료 대기 중...")
-                time.sleep(10)  # 다운로드 대기 시간 증가
+                # ?ㅼ슫濡쒕뱶 ?꾨즺 ?湲?
+                print("?ㅼ슫濡쒕뱶 ?꾨즺 ?湲?以?..")
+                time.sleep(10)  # ?ㅼ슫濡쒕뱶 ?湲??쒓컙 利앷?
                 
-                # 다운로드된 파일 확인 - 두 폴더 모두 확인
+                # ?ㅼ슫濡쒕뱶???뚯씪 ?뺤씤 - ???대뜑 紐⑤몢 ?뺤씤
                 downloaded_files = []
                 
-                # 1. 설정한 다운로드 폴더 확인
+                # 1. ?ㅼ젙???ㅼ슫濡쒕뱶 ?대뜑 ?뺤씤
                 if os.path.exists(self.download_dir):
                     downloaded_files = [f for f in os.listdir(self.download_dir) if f.endswith(('.xls', '.xlsx'))]
                     if downloaded_files:
-                        print(f"✓ 설정한 다운로드 폴더에서 파일 발견")
+                        print(f"???ㅼ젙???ㅼ슫濡쒕뱶 ?대뜑?먯꽌 ?뚯씪 諛쒓껄")
                 
-                # 2. Chrome 기본 다운로드 폴더 확인
+                # 2. Chrome 湲곕낯 ?ㅼ슫濡쒕뱶 ?대뜑 ?뺤씤
                 if not downloaded_files and os.path.exists(self.default_download_dir):
                     all_files = os.listdir(self.default_download_dir)
-                    # 최근 10초 이내에 생성된 엑셀 파일 찾기
+                    # 理쒓렐 10珥??대궡???앹꽦???묒? ?뚯씪 李얘린
                     import time as time_module
                     current_time = time_module.time()
                     for file in all_files:
                         if file.endswith(('.xls', '.xlsx')):
                             file_path = os.path.join(self.default_download_dir, file)
-                            if current_time - os.path.getmtime(file_path) < 15:  # 15초 이내
+                            if current_time - os.path.getmtime(file_path) < 15:  # 15珥??대궡
                                 downloaded_files.append(file)
-                                print(f"✓ Chrome 기본 다운로드 폴더에서 파일 발견")
+                                print(f"??Chrome 湲곕낯 ?ㅼ슫濡쒕뱶 ?대뜑?먯꽌 ?뚯씪 諛쒓껄")
                                 break
                 
                 if downloaded_files:
-                    print(f"\n✓ 엑셀 파일 다운로드 완료!")
+                    print(f"\n???묒? ?뚯씪 ?ㅼ슫濡쒕뱶 ?꾨즺!")
                     for file in downloaded_files:
-                        # 파일이 어느 폴더에 있는지 확인
+                        # ?뚯씪???대뒓 ?대뜑???덈뒗吏 ?뺤씤
                         if os.path.exists(os.path.join(self.download_dir, file)):
                             file_path = os.path.join(self.download_dir, file)
                         else:
@@ -330,65 +330,65 @@ class KyoboScraper:
                         
                         file_size = os.path.getsize(file_path)
                         print(f"  - {file} ({file_size:,} bytes)")
-                        print(f"    위치: {file_path}")
+                        print(f"    ?꾩튂: {file_path}")
                     return True
                 else:
-                    print("⚠ 다운로드된 엑셀 파일을 찾을 수 없습니다.")
+                    print("???ㅼ슫濡쒕뱶???묒? ?뚯씪??李얠쓣 ???놁뒿?덈떎.")
                     return False
                     
             except Exception as e:
-                print(f"엑셀 다운로드 버튼 클릭 오류: {str(e)}")
-                # 대체 방법
+                print(f"?묒? ?ㅼ슫濡쒕뱶 踰꾪듉 ?대┃ ?ㅻ쪟: {str(e)}")
+                # ?泥?諛⑸쾿
                 try:
-                    all_excel_buttons = self.driver.find_elements(By.XPATH, "//*[contains(text(), '엑셀')]")
-                    print(f"찾은 엑셀 관련 버튼: {len(all_excel_buttons)}개")
+                    all_excel_buttons = self.driver.find_elements(By.XPATH, "//*[contains(text(), '?묒?')]")
+                    print(f"李얠? ?묒? 愿??踰꾪듉: {len(all_excel_buttons)}媛?)
                     for idx, btn in enumerate(all_excel_buttons):
                         print(f"  [{idx}] text='{btn.text}', id='{btn.get_attribute('id')}'")
-                        if '엑셀다운' in btn.text:
+                        if '?묒??ㅼ슫' in btn.text:
                             self.driver.execute_script("arguments[0].click();", btn)
-                            print(f"✓ 엑셀다운 버튼 클릭 (인덱스: {idx})")
+                            print(f"???묒??ㅼ슫 踰꾪듉 ?대┃ (?몃뜳?? {idx})")
                             time.sleep(5)
                             break
                 except Exception as e2:
-                    print(f"대체 방법 실패: {str(e2)}")
+                    print(f"?泥?諛⑸쾿 ?ㅽ뙣: {str(e2)}")
                 return False
                 
         except Exception as e:
-            print(f"판매 데이터 스크랩 중 오류 발생: {str(e)}")
+            print(f"?먮ℓ ?곗씠???ㅽ겕??以??ㅻ쪟 諛쒖깮: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
     
     def upload_to_google_sheets(self, excel_file_path, query_date):
-        """구글 시트에 데이터 업로드"""
+        """援ш? ?쒗듃???곗씠???낅줈??""
         try:
-            print("\n=== 구글 시트 업로드 시작 ===")
+            print("\n=== 援ш? ?쒗듃 ?낅줈???쒖옉 ===")
             
-            # 1. 엑셀 파일 읽기 - 깨끗하게 처리
-            print(f"엑셀 파일 읽기: {excel_file_path}")
+            # 1. ?묒? ?뚯씪 ?쎄린 - 源⑤걮?섍쾶 泥섎━
+            print(f"?묒? ?뚯씪 ?쎄린: {excel_file_path}")
             
-            # 엑셀 파일 전체 읽기 (헤더 없이)
+            # ?묒? ?뚯씪 ?꾩껜 ?쎄린 (?ㅻ뜑 ?놁씠)
             df_raw = pd.read_excel(excel_file_path, header=None)
-            print(f"✓ 엑셀 원본 데이터: {len(df_raw)}행 x {len(df_raw.columns)}열")
+            print(f"???묒? ?먮낯 ?곗씠?? {len(df_raw)}??x {len(df_raw.columns)}??)
             
-            # "ISBN" 헤더가 있는 행 찾기
+            # "ISBN" ?ㅻ뜑媛 ?덈뒗 ??李얘린
             header_row_idx = None
             for idx, row in df_raw.iterrows():
                 row_values = [str(x) for x in row.values if pd.notna(x) and str(x).strip() != '']
                 row_str = ' '.join(row_values)
-                if 'ISBN' in row_str and '상품명' in row_str:
+                if 'ISBN' in row_str and '?곹뭹紐? in row_str:
                     header_row_idx = idx
-                    print(f"✓ 헤더 행 발견: {idx}행")
+                    print(f"???ㅻ뜑 ??諛쒓껄: {idx}??)
                     break
             
             if header_row_idx is None:
-                print("⚠ 헤더를 찾을 수 없습니다.")
+                print("???ㅻ뜑瑜?李얠쓣 ???놁뒿?덈떎.")
                 return False
             
-            # 헤더 추출 - 빈 컬럼 제거
+            # ?ㅻ뜑 異붿텧 - 鍮?而щ읆 ?쒓굅
             headers_raw = df_raw.iloc[header_row_idx].tolist()
             
-            # 유효한 헤더만 추출 (nan이 아닌 것)
+            # ?좏슚???ㅻ뜑留?異붿텧 (nan???꾨땶 寃?
             valid_col_indices = []
             clean_headers = []
             for i, header in enumerate(headers_raw):
@@ -396,52 +396,52 @@ class KyoboScraper:
                     valid_col_indices.append(i)
                     clean_headers.append(str(header).strip())
             
-            print(f"✓ 유효한 컬럼: {len(clean_headers)}개")
-            print(f"  컬럼명: {', '.join(clean_headers[:5])}...")
+            print(f"???좏슚??而щ읆: {len(clean_headers)}媛?)
+            print(f"  而щ읆紐? {', '.join(clean_headers[:5])}...")
             
-            # 데이터 행 추출 (헤더 다음 행부터)
+            # ?곗씠????異붿텧 (?ㅻ뜑 ?ㅼ쓬 ?됰???
             data_rows = df_raw.iloc[header_row_idx + 1:, valid_col_indices].copy()
             data_rows.columns = clean_headers
             data_rows = data_rows.reset_index(drop=True)
             
-            print(f"✓ 초기 데이터 로드: {len(data_rows)}행")
+            print(f"??珥덇린 ?곗씠??濡쒕뱶: {len(data_rows)}??)
             
-            # "합 계" 행 제거
-            mask = data_rows.apply(lambda row: any('합 계' in str(cell) or '합계' in str(cell) for cell in row.values), axis=1)
+            # "??怨? ???쒓굅
+            mask = data_rows.apply(lambda row: any('??怨? in str(cell) or '?⑷퀎' in str(cell) for cell in row.values), axis=1)
             data_rows = data_rows[~mask]
-            print(f"✓ 합계 행 제거 후: {len(data_rows)}행")
+            print(f"???⑷퀎 ???쒓굅 ?? {len(data_rows)}??)
             
-            # 모든 셀이 비어있거나 nan인 행 제거
+            # 紐⑤뱺 ???鍮꾩뼱?덇굅??nan?????쒓굅
             data_rows = data_rows.dropna(how='all')
-            print(f"✓ 빈 행 제거 후: {len(data_rows)}행")
+            print(f"??鍮????쒓굅 ?? {len(data_rows)}??)
             
-            # ISBN 컬럼이 비어있는 행 제거 (데이터가 없는 행)
+            # ISBN 而щ읆??鍮꾩뼱?덈뒗 ???쒓굅 (?곗씠?곌? ?녿뒗 ??
             if 'ISBN' in data_rows.columns:
                 data_rows = data_rows[data_rows['ISBN'].notna() & (data_rows['ISBN'] != '')]
-                print(f"✓ ISBN 없는 행 제거 후: {len(data_rows)}행")
+                print(f"??ISBN ?녿뒗 ???쒓굅 ?? {len(data_rows)}??)
             
-            # NaN 값을 빈 문자열로 변환
+            # NaN 媛믪쓣 鍮?臾몄옄?대줈 蹂??
             df = data_rows.fillna('')
             
-            # 2. 칼럼명 통일
+            # 2. 移쇰읆紐??듭씪
             rename_dict = {
-                '상품명': '도서명',
-                '출판일자': '발행일',
-                '조회기간': '날짜'
+                '?곹뭹紐?: '?꾩꽌紐?,
+                '異쒗뙋?쇱옄': '諛쒗뻾??,
+                '議고쉶湲곌컙': '?좎쭨'
             }
             for old_name, new_name in rename_dict.items():
                 if old_name in df.columns:
                     df.rename(columns={old_name: new_name}, inplace=True)
-                    print(f"✓ 칼럼명 변경: {old_name} → {new_name}")
+                    print(f"??移쇰읆紐?蹂寃? {old_name} ??{new_name}")
             
-            # 3. 업로드날짜, 날짜 컬럼 추가 (맨 앞에)
+            # 3. ?낅줈?쒕궇吏? ?좎쭨 而щ읆 異붽? (留??욎뿉)
             upload_date = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
-            df.insert(0, '날짜', query_date)
-            df.insert(0, '업로드날짜', upload_date)
-            print(f"✓ 업로드날짜({upload_date}), 날짜({query_date}) 컬럼 추가")
+            df.insert(0, '?좎쭨', query_date)
+            df.insert(0, '?낅줈?쒕궇吏?, upload_date)
+            print(f"???낅줈?쒕궇吏?{upload_date}), ?좎쭨({query_date}) 而щ읆 異붽?")
             
-            # 3. 구글 시트 연결
-            print("구글 시트 연결 중...")
+            # 3. 援ш? ?쒗듃 ?곌껐
+            print("援ш? ?쒗듃 ?곌껐 以?..")
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
@@ -451,93 +451,93 @@ class KyoboScraper:
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
-            # 4. 스프레드시트 열기
+            # 4. ?ㅽ봽?덈뱶?쒗듃 ?닿린
             spreadsheet_id = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
             spreadsheet = client.open_by_key(spreadsheet_id)
-            print("✓ 구글 시트 연결 완료")
+            print("??援ш? ?쒗듃 ?곌껐 ?꾨즺")
             
-            # 5. "교보문고" 시트 가져오기 또는 생성
+            # 5. "援먮낫臾멸퀬" ?쒗듃 媛?몄삤湲??먮뒗 ?앹꽦
             try:
-                worksheet = spreadsheet.worksheet("교보문고")
-                print("✓ 기존 '교보문고' 시트 찾음")
+                worksheet = spreadsheet.worksheet("援먮낫臾멸퀬")
+                print("??湲곗〈 '援먮낫臾멸퀬' ?쒗듃 李얠쓬")
             except gspread.WorksheetNotFound:
-                worksheet = spreadsheet.add_worksheet(title="교보문고", rows="1000", cols="20")
-                print("✓ '교보문고' 시트 생성")
+                worksheet = spreadsheet.add_worksheet(title="援먮낫臾멸퀬", rows="1000", cols="20")
+                print("??'援먮낫臾멸퀬' ?쒗듃 ?앹꽦")
             
-            # 데이터 검수 수행
+            # ?곗씠??寃???섑뻾
             try:
                 validation_warnings = self.validate_data_integrity(df, query_date, worksheet)
             except AttributeError:
                 validation_warnings = []
             except Exception as e:
-                print(f"⚠ 데이터 검수 중 오류: {str(e)}")
+                print(f"???곗씠??寃??以??ㅻ쪟: {str(e)}")
                 validation_warnings = []
             
-            # 6. 기존 데이터 가져오기
+            # 6. 湲곗〈 ?곗씠??媛?몄삤湲?
             existing_data = worksheet.get_all_values()
             
             if existing_data and len(existing_data) > 1:
-                # 헤더와 데이터 분리
+                # ?ㅻ뜑? ?곗씠??遺꾨━
                 existing_headers = existing_data[0]
                 existing_rows = existing_data[1:]
                 
-                # DataFrame으로 변환
+                # DataFrame?쇰줈 蹂??
                 existing_df = pd.DataFrame(existing_rows, columns=existing_headers)
                 
-                # 빈 행 제거
+                # 鍮????쒓굅
                 existing_df = existing_df.replace('', pd.NA).dropna(how='all').fillna('')
                 
-                print(f"✓ 기존 데이터: {len(existing_df)}행")
+                print(f"??湲곗〈 ?곗씠?? {len(existing_df)}??)
                 
-                # 새 데이터와 병합
+                # ???곗씠?곗? 蹂묓빀
                 combined_df = pd.concat([existing_df, df], ignore_index=True)
-                print(f"✓ 데이터 병합: {len(combined_df)}행")
+                print(f"???곗씠??蹂묓빀: {len(combined_df)}??)
             else:
                 combined_df = df
-                print("✓ 첫 데이터 업로드")
+                print("??泥??곗씠???낅줈??)
             
-            # 7. 3년 이상된 데이터 삭제
-            if '업로드날짜' in combined_df.columns:
+            # 7. 3???댁긽???곗씠????젣
+            if '?낅줈?쒕궇吏? in combined_df.columns:
                 three_years_ago = (datetime.now(pytz.timezone('Asia/Seoul')) - timedelta(days=365*3)).strftime('%Y-%m-%d')
                 original_len = len(combined_df)
-                combined_df = combined_df[combined_df['업로드날짜'] >= three_years_ago]
+                combined_df = combined_df[combined_df['?낅줈?쒕궇吏?] >= three_years_ago]
                 removed = original_len - len(combined_df)
                 if removed > 0:
-                    print(f"✓ 3년 이상된 데이터 {removed}행 삭제")
+                    print(f"??3???댁긽???곗씠??{removed}????젣")
             
-            # 8. 시트 업데이트
-            print("구글 시트 업데이트 중...")
+            # 8. ?쒗듃 ?낅뜲?댄듃
+            print("援ш? ?쒗듃 ?낅뜲?댄듃 以?..")
             worksheet.clear()
             
-            # 데이터를 문자열로 변환하여 안전하게 처리
+            # ?곗씠?곕? 臾몄옄?대줈 蹂?섑븯???덉쟾?섍쾶 泥섎━
             combined_df = combined_df.astype(str)
             
-            # 헤더와 데이터 분리
+            # ?ㅻ뜑? ?곗씠??遺꾨━
             headers = combined_df.columns.tolist()
             data = combined_df.values.tolist()
             
-            # 헤더 쓰기
+            # ?ㅻ뜑 ?곌린
             worksheet.update(values=[headers], range_name='A1')
             
-            # 데이터 쓰기 (있는 경우만)
+            # ?곗씠???곌린 (?덈뒗 寃쎌슦留?
             if data:
                 worksheet.update(values=data, range_name='A2')
             
-            print(f"✓ 구글 시트 업데이트 완료: {len(combined_df)}행")
-            print(f"✓ 시트 URL: https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit#gid={worksheet.id}")
+            print(f"??援ш? ?쒗듃 ?낅뜲?댄듃 ?꾨즺: {len(combined_df)}??)
+            print(f"???쒗듃 URL: https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit#gid={worksheet.id}")
             
             return True
             
         except Exception as e:
-            print(f"구글 시트 업로드 오류: {str(e)}")
+            print(f"援ш? ?쒗듃 ?낅줈???ㅻ쪟: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
     
     def close(self):
-        """드라이버 종료"""
+        """?쒕씪?대쾭 醫낅즺"""
         if self.driver:
-            print("브라우저를 5초 후 종료합니다...")
+            print("釉뚮씪?곗?瑜?5珥???醫낅즺?⑸땲??..")
             time.sleep(5)
             try:
                 self.driver.quit()
@@ -547,7 +547,7 @@ class KyoboScraper:
 
 
 def main():
-    # 교보문고 로그인 정보 (환경 변수 우선)
+    # 援먮낫臾멸퀬 濡쒓렇???뺣낫 (?섍꼍 蹂???곗꽑)
     import os
     USERNAME = os.getenv('KYOBO_ID', '1058745036')
     PASSWORD = os.getenv('KYOBO_PASSWORD', 'then325325@')
@@ -555,96 +555,96 @@ def main():
     scraper = KyoboScraper(USERNAME, PASSWORD)
     
     try:
-        # 드라이버 설정
+        # ?쒕씪?대쾭 ?ㅼ젙
         scraper.setup_driver()
         
-        # 빠진 날짜 확인
+        # 鍮좎쭊 ?좎쭨 ?뺤씤
         missing_dates = scraper.get_missing_dates_from_sheet()
         
         if not missing_dates:
-            print("\n✅ 모든 데이터가 최신 상태입니다!")
+            print("\n??紐⑤뱺 ?곗씠?곌? 理쒖떊 ?곹깭?낅땲??")
             return
         
-        print(f"\n📋 총 {len(missing_dates)}일의 데이터를 수집합니다.")
+        print(f"\n?뱥 珥?{len(missing_dates)}?쇱쓽 ?곗씠?곕? ?섏쭛?⑸땲??")
         
-        # 로그인 시도
+        # 濡쒓렇???쒕룄
         success = scraper.login()
         
         if success:
-            print("\n로그인이 성공적으로 완료되었습니다!")
+            print("\n濡쒓렇?몄씠 ?깃났?곸쑝濡??꾨즺?섏뿀?듬땲??")
             
             success_count = 0
             failed_dates = []
             
-            # 각 날짜별로 스크랩
+            # 媛??좎쭨蹂꾨줈 ?ㅽ겕??
             for i, date in enumerate(missing_dates, 1):
                 print(f"\n{'='*60}")
-                print(f"📅 [{i}/{len(missing_dates)}] {date} 데이터 수집")
+                print(f"?뱟 [{i}/{len(missing_dates)}] {date} ?곗씠???섏쭛")
                 print(f"{'='*60}")
                 
                 try:
-                    # 판매 데이터 스크랩
+                    # ?먮ℓ ?곗씠???ㅽ겕??
                     scrape_success = scraper.scrape_sales_data(date)
                     
                     if scrape_success:
-                        # 다운로드된 파일 찾기
+                        # ?ㅼ슫濡쒕뱶???뚯씪 李얘린
                         downloaded_file = None
                         
-                        # 1. 설정한 다운로드 폴더 확인
+                        # 1. ?ㅼ젙???ㅼ슫濡쒕뱶 ?대뜑 ?뺤씤
                         import time as time_module
                         current_time = time_module.time()
                         
                         for file in os.listdir(scraper.download_dir):
-                            if file.endswith(('.xls', '.xlsx')) and '교보문고' in file:
+                            if file.endswith(('.xls', '.xlsx')) and '援먮낫臾멸퀬' in file:
                                 file_path = os.path.join(scraper.download_dir, file)
-                                if current_time - os.path.getmtime(file_path) < 30:  # 30초 이내
+                                if current_time - os.path.getmtime(file_path) < 30:  # 30珥??대궡
                                     downloaded_file = file_path
                                     break
                         
-                        # 2. Chrome 기본 다운로드 폴더에서 찾기
+                        # 2. Chrome 湲곕낯 ?ㅼ슫濡쒕뱶 ?대뜑?먯꽌 李얘린
                         if not downloaded_file:
                             for file in os.listdir(scraper.default_download_dir):
-                                if file.endswith(('.xls', '.xlsx')) and '교보문고' in file:
+                                if file.endswith(('.xls', '.xlsx')) and '援먮낫臾멸퀬' in file:
                                     file_path = os.path.join(scraper.default_download_dir, file)
-                                    if current_time - os.path.getmtime(file_path) < 30:  # 30초 이내
+                                    if current_time - os.path.getmtime(file_path) < 30:  # 30珥??대궡
                                         downloaded_file = file_path
                                         break
                         
                         if downloaded_file:
-                            print(f"\n다운로드 파일 발견: {downloaded_file}")
-                            # 구글 시트 업로드
+                            print(f"\n?ㅼ슫濡쒕뱶 ?뚯씪 諛쒓껄: {downloaded_file}")
+                            # 援ш? ?쒗듃 ?낅줈??
                             if scraper.upload_to_google_sheets(downloaded_file, date):
                                 success_count += 1
-                                print(f"✅ {date} 데이터 업로드 완료!")
+                                print(f"??{date} ?곗씠???낅줈???꾨즺!")
                             else:
                                 failed_dates.append(date)
-                                print(f"⚠ {date} 데이터 업로드 실패")
+                                print(f"??{date} ?곗씠???낅줈???ㅽ뙣")
                         else:
                             failed_dates.append(date)
-                            print(f"\n⚠ {date} 다운로드 파일을 찾을 수 없습니다.")
+                            print(f"\n??{date} ?ㅼ슫濡쒕뱶 ?뚯씪??李얠쓣 ???놁뒿?덈떎.")
                     else:
                         failed_dates.append(date)
-                        print(f"⚠ {date} 데이터 스크랩 실패")
+                        print(f"??{date} ?곗씠???ㅽ겕???ㅽ뙣")
                         
                 except Exception as e:
                     failed_dates.append(date)
-                    print(f"⚠ {date} 처리 중 오류: {str(e)}")
+                    print(f"??{date} 泥섎━ 以??ㅻ쪟: {str(e)}")
                     continue
             
-            # 결과 요약
+            # 寃곌낵 ?붿빟
             print(f"\n{'='*60}")
-            print("📊 데이터 수집 완료!")
+            print("?뱤 ?곗씠???섏쭛 ?꾨즺!")
             print(f"{'='*60}")
-            print(f"✅ 성공: {success_count}일")
+            print(f"???깃났: {success_count}??)
             if failed_dates:
-                print(f"⚠ 실패: {len(failed_dates)}일")
-                print(f"   실패한 날짜: {', '.join(failed_dates)}")
+                print(f"???ㅽ뙣: {len(failed_dates)}??)
+                print(f"   ?ㅽ뙣???좎쭨: {', '.join(failed_dates)}")
             print(f"{'='*60}\n")
         else:
-            print("\n로그인에 실패했습니다.")
+            print("\n濡쒓렇?몄뿉 ?ㅽ뙣?덉뒿?덈떎.")
             
     except Exception as e:
-        print(f"오류 발생: {str(e)}")
+        print(f"?ㅻ쪟 諛쒖깮: {str(e)}")
     finally:
         scraper.close()
 
