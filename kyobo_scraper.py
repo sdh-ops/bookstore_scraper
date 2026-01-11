@@ -450,6 +450,54 @@ class KyoboScraper:
 
             # Try clicking the found element with JS if normal click fails
             if sales_inquiry:
+                # Diagnostic logs for debugging interactability
+                try:
+                    disp = sales_inquiry.is_displayed()
+                except Exception:
+                    disp = 'error'
+                try:
+                    enabled = sales_inquiry.is_enabled()
+                except Exception:
+                    enabled = 'error'
+                try:
+                    size = sales_inquiry.size
+                except Exception:
+                    size = {'width': 'err', 'height': 'err'}
+                try:
+                    location = sales_inquiry.location
+                except Exception:
+                    location = {'x': 'err', 'y': 'err'}
+                try:
+                    elem_id = sales_inquiry.get_attribute('id')
+                except Exception:
+                    elem_id = None
+                try:
+                    elem_class = sales_inquiry.get_attribute('class')
+                except Exception:
+                    elem_class = None
+                try:
+                    style = sales_inquiry.get_attribute('style')
+                except Exception:
+                    style = None
+                try:
+                    outer = sales_inquiry.get_attribute('outerHTML')
+                except Exception:
+                    outer = None
+                try:
+                    off_w = self.driver.execute_script('return arguments[0].offsetWidth;', sales_inquiry)
+                    off_h = self.driver.execute_script('return arguments[0].offsetHeight;', sales_inquiry)
+                except Exception:
+                    off_w = off_h = 'err'
+
+                print("--- 판매조회 ELEMENT DIAGNOSTICS ---")
+                print(f"displayed: {disp}, enabled: {enabled}")
+                print(f"size: {size}, offset: ({off_w}x{off_h}), location: {location}")
+                print(f"id: {elem_id}, class: {elem_class}")
+                print(f"style: {style}")
+                if outer:
+                    print(f"outerHTML starts: {outer[:200]}")
+                print("--- end diagnostics ---")
+
                 try:
                     sales_inquiry.click()
                     print("✓ 판매조회 메뉴 클릭")
