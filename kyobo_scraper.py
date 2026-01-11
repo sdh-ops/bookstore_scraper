@@ -179,7 +179,7 @@ class KyoboScraper:
         df = df[~df.apply(lambda r: any("합계" in str(c) or "합 계" in str(c) for c in r.values), axis=1)]
         if "ISBN" in df.columns:
             df = df[df["ISBN"].notna() & (df["ISBN"] != "")]
-        df = df.fillna("")
+        df = df.fillna("").infer_objects(copy=False)
 
         rename_map = {"상품명": "도서명", "출판일자": "발행일"}
         df.rename(columns=rename_map, inplace=True)
