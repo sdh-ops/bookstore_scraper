@@ -14,12 +14,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 import glob
 
-class Yes24Scraper:
-    def __init__(self):
-        self.driver = None
-        self.wait = None
-        self.download_dir = None
-
 
 def _locate_credentials_file():
     env_json = os.getenv('GOOGLE_CREDENTIALS')
@@ -41,7 +35,14 @@ def _locate_credentials_file():
         if os.path.exists(p):
             return p
     return None
-        
+
+
+class Yes24Scraper:
+    def __init__(self):
+        self.driver = None
+        self.wait = None
+        self.download_dir = None
+
     def setup_driver(self):
         """Chrome 드라이버 설정"""
         chrome_options = Options()
@@ -117,9 +118,9 @@ def _locate_credentials_file():
             except:
                 print(f"✓ YES24 시트 없음 또는 비어있음")
             
-            # 2026-01-01부터 어제까지 모든 날짜 생성
+            # 2025-09-01부터 어제까지 모든 날짜 생성
             korea_tz = pytz.timezone('Asia/Seoul')
-            start_date = korea_tz.localize(datetime(2026, 1, 1))
+            start_date = korea_tz.localize(datetime(2025, 9, 1))
             today = datetime.now(korea_tz)
             yesterday = today - timedelta(days=1)
             
@@ -870,8 +871,11 @@ def _locate_credentials_file():
         if self.driver:
             print("\n브라우저를 10초 후 종료합니다...")
             time.sleep(10)
-            self.driver.quit()
-            self.driver = None  # 중복 종료 방지
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
 
 if __name__ == "__main__":
     # YES24 로그인 정보 (환경 변수 우선)

@@ -104,9 +104,9 @@ class AladinScraper:
                 last_date = korea_tz.localize(datetime(2025, 12, 31))
                 print(f"✓ 알라딘 시트 없음, 2026-01-01부터 시작")
             
-            # 2026-01-01부터 어제까지 모든 날짜 생성
+            # 2025-09-01부터 어제까지 모든 날짜 생성
             korea_tz = pytz.timezone('Asia/Seoul')
-            start_date = datetime(2026, 1, 1)
+            start_date = datetime(2025, 9, 1)
             today = datetime.now(korea_tz).replace(tzinfo=None)
             yesterday = today - timedelta(days=1)
             
