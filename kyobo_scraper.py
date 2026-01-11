@@ -137,13 +137,10 @@ class KyoboScraper:
         # Click search button
         search_btn = self.driver.find_element(By.ID, "btn_search")
         self.driver.execute_script("arguments[0].click();", search_btn)
-        time.sleep(3)
-
-        # Wait for data to load
-        for _ in range(30):
-            if len(self.driver.find_elements(By.XPATH, "//table//tr[td]")) > 1:
-                break
-            time.sleep(1)
+        
+        # Wait 25 seconds for data to load (required by Kyobo)
+        print(f"Waiting 25 seconds for data to load...")
+        time.sleep(25)
 
         # Click Excel download button
         excel_btn = WebDriverWait(self.driver, 10).until(
@@ -224,6 +221,16 @@ class KyoboScraper:
 
 def main():
     bot = KyoboScraper(os.getenv("KYOBO_ID"), os.getenv("KYOBO_PASSWORD"))
+    bot.setup()
+    if not bot.login():
+        print("LOGIN FAILED")
+        return
+
+    dates = bot.get_missing_dates()
+    print("DATES TO FETCH:", dates)
+
+    for d in dates:
+        print(f"FETCH {d}")
         if not bot.scrape_date(d):
             print(f"SKIP {d} - scrape failed")
             continue
@@ -241,16 +248,6 @@ def main():
                 print(f"REMOVED {excel_path}")
             except:
                 pass
-        bot.scrape_date(d)
-        
-        # Find downloaded file
-        time.sleep(2)
-        files = [f for f in os.listdir(bot.download_dir) if f.endswith((".xls", ".xlsx"))]
-        if files:
-            files.sort(key=lambda x: os.path.getmtime(os.path.join(bot.download_dir, x)), reverse=True)
-            excel_path = os.path.join(bot.download_dir, files[0])
-            print(f"UPLOAD {excel_path}")
-            bot.upload_to_google_sheets(excel_path, d)
         else:
             print("NO EXCEL FILE FOUND")
 
