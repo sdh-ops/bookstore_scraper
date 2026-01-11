@@ -426,6 +426,67 @@ class KyoboScraper:
 
                 if not tried:
                     print("⚠ 판매정보 메뉴 호버/클릭을 위한 모든 대체 방법 실패")
+            # If ActionChains didn't succeed and the above except block didn't run (e.g. inner exception handled),
+            # ensure we still attempt JS-based fallbacks.
+            if not tried:
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sales_menu)
+                    time.sleep(0.5)
+                    for ev_name in ('mouseover','mouseenter','pointerover'):
+                        try:
+                            self.driver.execute_script(
+                                "var ev = new MouseEvent(arguments[1], {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
+                                sales_menu,
+                                ev_name
+                            )
+                            time.sleep(0.3)
+                        except Exception:
+                            continue
+                    print("✓ (재시도) 대체 방법으로 마우스 이벤트 디스패치 시도 완료")
+                    tried = True
+                except Exception as e2:
+                    print(f"(재시도) 대체 마우스이벤트 실패: {e2}")
+
+                # 요소 내부의 클릭 가능한 앵커/링크가 있으면 직접 클릭 시도
+                if not tried:
+                    try:
+                        child = None
+                        try:
+                            child = sales_menu.find_element(By.XPATH, ".//a|.//button")
+                        except:
+                            pass
+                        if child:
+                            try:
+                                self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", child)
+                                time.sleep(0.2)
+                                self.driver.execute_script("arguments[0].click();", child)
+                                print("✓ (재시도) 자식 앵커를 찾아 JS 클릭으로 메뉴 활성화 시도")
+                                tried = True
+                            except Exception as e3:
+                                print(f"(재시도) 자식 앵커 JS 클릭 실패: {e3}")
+                    except Exception:
+                        pass
+
+                # 마지막으로 전체 페이지에서 해당 메뉴 텍스트를 찾아 JS로 클릭 시도
+                if not tried:
+                    try:
+                        text = sales_menu.text.strip()[:30]
+                        if text:
+                            elems = self.driver.find_elements(By.XPATH, f"//*[contains(text(), '{text}')]")
+                            for el in elems:
+                                try:
+                                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", el)
+                                    print("✓ (재시도) 텍스트 기반 요소를 찾아 JS 클릭으로 메뉴 활성화 시도")
+                                    tried = True
+                                    break
+                                except Exception:
+                                    continue
+                    except Exception as e4:
+                        print(f"(재시도) 텍스트 기반 클릭 시도 실패: {e4}")
+
+                if not tried:
+                    print("⚠ (재시도) 판매정보 메뉴 호버/클릭을 위한 모든 대체 방법 실패")
+
             time.sleep(1)
             
             # 2. 판매조회 서브메뉴 클릭
