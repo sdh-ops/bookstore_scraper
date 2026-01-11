@@ -239,6 +239,16 @@ class KyoboScraper:
         if existing and len(existing) > 1:
             existing_df = pd.DataFrame(existing[1:], columns=existing[0])
             existing_df = existing_df.replace("", pd.NA).dropna(how="all").fillna("")
+            
+            # 컬럼명이 다른 경우 처리
+            if set(df.columns) != set(existing_df.columns):
+                print(f"Column mismatch - existing: {list(existing_df.columns)}, new: {list(df.columns)}")
+                for col in existing_df.columns:
+                    if col not in df.columns:
+                        df[col] = ''
+                df = df[existing_df.columns]
+                print("Columns aligned")
+            
             combined = pd.concat([existing_df, df], ignore_index=True)
         else:
             combined = df
@@ -247,6 +257,12 @@ class KyoboScraper:
         if "업로드날짜" in combined.columns:
             three_years_ago = (datetime.now(pytz.timezone("Asia/Seoul")) - timedelta(days=365*3)).strftime("%Y-%m-%d")
             combined = combined[combined["업로드날짜"] >= three_years_ago]
+        
+        # Sort by date
+        if "날짜" in combined.columns:
+            combined = combined.sort_values(by="날짜", ascending=True)
+            combined = combined.reset_index(drop=True)
+            print("Sorted by date")
 
         # Update sheet
         ws.clear()
