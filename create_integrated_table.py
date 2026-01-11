@@ -139,7 +139,7 @@ def process_yes24_data(df):
     result['출판사'] = get_column_safe(df, '출판사', '제조사')
     result['업로드날짜'] = get_column_safe(df, '업로드날짜')
     result['UpdatedAt_yes24'] = get_column_safe(df, 'UpdatedAt')
-    result['YES24'] = pd.to_numeric(get_column_safe(df, '당월판매량'), errors='coerce').fillna(0).astype(int)
+    result['YES24'] = pd.to_numeric(get_column_safe(df, '기간중판매량'), errors='coerce').fillna(0).astype(int)
     
     print(f"YES24 처리 완료: {len(result)}행")
     return result
