@@ -352,26 +352,116 @@ class KyoboScraper:
                 print("✓ 판매정보 메뉴 호버")
             except Exception as e:
                 print(f"호버 실패 (ActionChains): {e} — JS 대체 시도")
+                tried = False
+                # 1) scrollIntoView + 여러 이벤트 타입 시도
                 try:
-                    # 요소가 보이도록 스크롤하고 mouseover 이벤트를 디스패치
                     self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sales_menu)
                     time.sleep(0.5)
-                    self.driver.execute_script(
-                        "var ev = new MouseEvent('mouseover', {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
-                        sales_menu
-                    )
-                    print("✓ 대체 방법으로 마우스 오버 트리거 성공")
+                    for ev_name in ('mouseover','mouseenter','pointerover'):
+                        try:
+                            self.driver.execute_script(
+                                "var ev = new MouseEvent(arguments[1], {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
+                                sales_menu,
+                                ev_name
+                            )
+                            time.sleep(0.3)
+                        except Exception:
+                            continue
+                    print("✓ 대체 방법으로 마우스 이벤트 디스패치 시도 완료")
+                    tried = True
                 except Exception as e2:
-                    print(f"대체 마우스오버 실패: {e2}")
+                    print(f"대체 마우스이벤트 실패: {e2}")
+
+                # 2) 요소 내부의 클릭 가능한 앵커/링크가 있으면 직접 클릭 시도
+                if not tried:
+                    try:
+                        child = None
+                        try:
+                            child = sales_menu.find_element(By.XPATH, ".//a|.//button")
+                        except:
+                            pass
+                        if child:
+                            try:
+                                self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", child)
+                                time.sleep(0.2)
+                                self.driver.execute_script("arguments[0].click();", child)
+                                print("✓ 자식 앵커를 찾아 JS 클릭으로 메뉴 활성화 시도")
+                                tried = True
+                            except Exception as e3:
+                                print(f"자식 앵커 JS 클릭 실패: {e3}")
+                    except Exception:
+                        pass
+
+                # 3) 마지막으로 전체 페이지에서 해당 메뉴 텍스트를 찾아 JS로 클릭 시도
+                if not tried:
+                    try:
+                        text = sales_menu.text.strip()[:30]
+                        if text:
+                            # XPath로 같은 텍스트를 가진 요소 찾아 JS 클릭
+                            elems = self.driver.find_elements(By.XPATH, f"//*[contains(text(), '{text}')]")
+                            for el in elems:
+                                try:
+                                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", el)
+                                    print("✓ 텍스트 기반 요소를 찾아 JS 클릭으로 메뉴 활성화 시도")
+                                    tried = True
+                                    break
+                                except Exception:
+                                    continue
+                    except Exception as e4:
+                        print(f"텍스트 기반 클릭 시도 실패: {e4}")
+
+                if not tried:
+                    print("⚠ 판매정보 메뉴 호버/클릭을 위한 모든 대체 방법 실패")
             time.sleep(1)
             
             # 2. 판매조회 서브메뉴 클릭
             print("판매조회 메뉴 찾는 중...")
-            sales_inquiry = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '판매조회')]"))
-            )
-            sales_inquiry.click()
-            print("✓ 판매조회 메뉴 클릭")
+            sales_inquiry = None
+            try:
+                sales_inquiry = WebDriverWait(self.driver, 6).until(
+                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '판매조회')]") )
+                )
+            except Exception:
+                pass
+
+            # Fallbacks: id-based, class-based, partial id like 'saleStockInfo', or w2anchor class
+            if not sales_inquiry:
+                try:
+                    # try known id
+                    sales_inquiry = self.driver.find_element(By.ID, "saleStockInfo")
+                    print("✓ 판매조회 요소 발견 (ID: saleStockInfo)")
+                except Exception:
+                    try:
+                        sales_inquiry = self.driver.find_element(By.XPATH, "//a[contains(@id,'sale') and contains(text(),'조회')]")
+                        print("✓ 판매조회 요소 발견 (id contains 'sale' + text contains '조회')")
+                    except Exception:
+                        try:
+                            sales_inquiry = self.driver.find_element(By.XPATH, "//a[contains(@class,'w2anchor') and contains(text(),'판매')]")
+                            print("✓ 판매조회 요소 발견 (class contains 'w2anchor')")
+                        except Exception:
+                            # last resort: find any link with text fragment
+                            try:
+                                elems = self.driver.find_elements(By.XPATH, "//a[contains(text(),'판매') or contains(text(),'조회')]")
+                                if elems:
+                                    sales_inquiry = elems[0]
+                                    print(f"✓ 판매조회 유사 요소 발견: text='{sales_inquiry.text[:30]}'")
+                            except Exception:
+                                sales_inquiry = None
+
+            # Try clicking the found element with JS if normal click fails
+            if sales_inquiry:
+                try:
+                    sales_inquiry.click()
+                    print("✓ 판매조회 메뉴 클릭")
+                except Exception as e:
+                    try:
+                        self.driver.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].click();", sales_inquiry)
+                        print("✓ 판매조회 메뉴 클릭 (JS 클릭)")
+                    except Exception as e2:
+                        print(f"판매조회 클릭 실패: {e} / {e2}")
+            else:
+                print("⚠ 판매조회 메뉴를 찾을 수 없습니다.")
+            time.sleep(3)
             time.sleep(3)
             
             # 3. 조회기간 설정
