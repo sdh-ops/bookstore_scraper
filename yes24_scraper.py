@@ -840,8 +840,10 @@ class Yes24Scraper:
                 removed = original_len - len(combined_df)
                 if removed > 0:
                     print(f"✓ 3년 이상된 데이터 {removed}행 삭제")
-            
-            # 7. 시트 업데이트
+                        # Sort by date
+            if '날짜' in combined_df.columns:
+                combined_df = combined_df.sort_values('날짜').reset_index(drop=True)
+                        # 7. 시트 업데이트
             print("구글 시트 업데이트 중...")
             worksheet.clear()
             

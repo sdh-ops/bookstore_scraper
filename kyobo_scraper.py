@@ -142,91 +142,52 @@ class KyoboScraper:
         print(f"Waiting 25 seconds for data to load...")
         time.sleep(25)
 
-        # Extract table data directly
-        print("Extracting table data...")
-        try:
-            # Find table (adjust selector based on actual page structure)
-            tables = self.driver.find_elements(By.TAG_NAME, "table")
-            if not tables:
-                print("No tables found")
-                return None
-            
-            # Use the first data table (skip navigation tables)
-            table = None
-            for t in tables:
-                try:
-                    # Check if table has data rows
-                    tbody = t.find_element(By.TAG_NAME, "tbody")
-                    rows = tbody.find_elements(By.TAG_NAME, "tr")
-                    if len(rows) > 0:
-                        table = t
-                        break
-                except:
-                    continue
-            
-            if not table:
-                print("No data table found")
-                return None
-            
-            # Extract headers
-            thead = table.find_element(By.TAG_NAME, "thead")
-            header_row = thead.find_element(By.TAG_NAME, "tr")
-            headers = [cell.text.strip() for cell in header_row.find_elements(By.TAG_NAME, "th")]
-            headers = [h for h in headers if h]  # Remove empty headers
-            print(f"Headers: {len(headers)} - {', '.join(headers[:5])}...")
-            
-            # Extract data rows
-            tbody = table.find_element(By.TAG_NAME, "tbody")
-            data_rows = []
-            for row in tbody.find_elements(By.TAG_NAME, "tr"):
-                cells = row.find_elements(By.TAG_NAME, "td")
-                if cells:
-                    row_data = [cell.text.strip() for cell in cells]
-                    if any(cell for cell in row_data):
-                        data_rows.append(row_data)
-            
-            print(f"Data rows: {len(data_rows)}")
-            
-            if not data_rows:
-                print("No data rows found")
-                return None
-            
-            # Create DataFrame
-            df = pd.DataFrame(data_rows, columns=headers)
-            print(f"DataFrame created: {len(df)} rows x {len(df.columns)} columns")
-            
-            return df
-            
-        except Exception as e:
-            print(f"Error extracting table data: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
-
-    def upload_to_google_sheets(self, df, date_str):
-        if df is None or len(df) == 0:
-            print("No data to upload")
-            return False
+        # Click Excel download button
+        excel_btn = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.ID, "btn_ExcelDown"))
+        )
+        self.driver.execute_script("arguments[0].click();", excel_btn)
         
-        # Clean data
+        # Wait for download to complete
+        print(f"Waiting for download in: {self.download_dir}")
+        for i in range(30):
+            files = [f for f in os.listdir(self.download_dir) if f.endswith(('.xls', '.xlsx')) and not f.endswith('.crdownload')]
+            if files:
+                print(f"Found {len(files)} file(s) after {i+1}s")
+                return True
+            time.sleep(1)
+        
+        print(f"Download timeout - no file found in {self.download_dir}")
+        return False
+
+    def upload_to_google_sheets(self, excel_path, date_str):
+        df_raw = pd.read_excel(excel_path, header=None)
+        header_idx = None
+        for i, row in df_raw.iterrows():
+            if any("ISBN" in str(cell) for cell in row.values):
+                header_idx = i
+                break
+        if header_idx is None:
+            return False
+
+        headers = [str(h).strip() for h in df_raw.iloc[header_idx].values if pd.notna(h) and str(h).strip()]
+        valid_cols = [i for i, h in enumerate(df_raw.iloc[header_idx].values) if pd.notna(h) and str(h).strip()]
+        
+        df = df_raw.iloc[header_idx + 1:, valid_cols].copy()
+        df.columns = headers
         df = df.dropna(how="all")
         df = df[~df.apply(lambda r: any("합계" in str(c) or "합 계" in str(c) for c in r.values), axis=1)]
         if "ISBN" in df.columns:
             df = df[df["ISBN"].notna() & (df["ISBN"] != "")]
         df = df.fillna("").infer_objects(copy=False)
 
-        # Rename columns
         rename_map = {"상품명": "도서명", "출판일자": "발행일"}
         df.rename(columns=rename_map, inplace=True)
         
-        # Add metadata
         upload_date = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d")
-        updated_at = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
         df.insert(0, "날짜", date_str)
         df.insert(0, "업로드날짜", upload_date)
-        df["UpdatedAt"] = updated_at
 
-        # Connect to Google Sheets
         client = gspread.authorize(get_creds())
         sheet = client.open_by_key(SPREADSHEET_ID)
         try:
@@ -234,44 +195,27 @@ class KyoboScraper:
         except:
             ws = sheet.add_worksheet(title="교보문고", rows="1000", cols="20")
 
-        # Merge with existing data
         existing = ws.get_all_values()
         if existing and len(existing) > 1:
             existing_df = pd.DataFrame(existing[1:], columns=existing[0])
             existing_df = existing_df.replace("", pd.NA).dropna(how="all").fillna("")
-            
-            # 컬럼명이 다른 경우 처리
-            if set(df.columns) != set(existing_df.columns):
-                print(f"Column mismatch - existing: {list(existing_df.columns)}, new: {list(df.columns)}")
-                for col in existing_df.columns:
-                    if col not in df.columns:
-                        df[col] = ''
-                df = df[existing_df.columns]
-                print("Columns aligned")
-            
             combined = pd.concat([existing_df, df], ignore_index=True)
         else:
             combined = df
 
-        # Remove data older than 3 years
         if "업로드날짜" in combined.columns:
             three_years_ago = (datetime.now(pytz.timezone("Asia/Seoul")) - timedelta(days=365*3)).strftime("%Y-%m-%d")
             combined = combined[combined["업로드날짜"] >= three_years_ago]
-        
+
         # Sort by date
         if "날짜" in combined.columns:
-            combined = combined.sort_values(by="날짜", ascending=True)
-            combined = combined.reset_index(drop=True)
-            print("Sorted by date")
+            combined = combined.sort_values("날짜").reset_index(drop=True)
 
-        # Update sheet
         ws.clear()
         combined = combined.astype(str)
         ws.update(values=[combined.columns.tolist()], range_name="A1")
         if len(combined) > 0:
             ws.update(values=combined.values.tolist(), range_name="A2")
-        
-        print(f"Uploaded {len(combined)} rows to Google Sheets")
         return True
 
     def close(self):
@@ -291,13 +235,25 @@ def main():
 
     for d in dates:
         print(f"FETCH {d}")
-        df = bot.scrape_date(d)
-        if df is None or len(df) == 0:
-            print(f"SKIP {d} - no data extracted")
+        if not bot.scrape_date(d):
+            print(f"SKIP {d} - scrape failed")
             continue
         
-        print(f"UPLOAD DataFrame with {len(df)} rows")
-        bot.upload_to_google_sheets(df, d)
+        # Find downloaded file
+        files = [f for f in os.listdir(bot.download_dir) if f.endswith((".xls", ".xlsx"))]
+        if files:
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(bot.download_dir, x)), reverse=True)
+            excel_path = os.path.join(bot.download_dir, files[0])
+            print(f"UPLOAD {excel_path}")
+            bot.upload_to_google_sheets(excel_path, d)
+            # Clean up downloaded file
+            try:
+                os.remove(excel_path)
+                print(f"REMOVED {excel_path}")
+            except:
+                pass
+        else:
+            print("NO EXCEL FILE FOUND")
 
     bot.close()
 

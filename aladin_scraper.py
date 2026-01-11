@@ -622,15 +622,6 @@ class AladinScraper:
                 
                 print(f"✓ 기존 데이터: {len(existing_df)}행")
                 
-                # 컬럼명이 다른 경우 처리
-                if set(df.columns) != set(existing_df.columns):
-                    print(f"⚠ 컬럼명 불일치 - 기존: {list(existing_df.columns)}, 새: {list(df.columns)}")
-                    for col in existing_df.columns:
-                        if col not in df.columns:
-                            df[col] = ''
-                    df = df[existing_df.columns]
-                    print(f"✓ 컬럼명 맞춤 완료")
-                
                 # 새 데이터와 병합
                 combined_df = pd.concat([existing_df, df], ignore_index=True)
                 print(f"✓ 데이터 병합: {len(combined_df)}행")
@@ -646,14 +637,10 @@ class AladinScraper:
                 removed = original_len - len(combined_df)
                 if removed > 0:
                     print(f"✓ 3년 이상된 데이터 {removed}행 삭제")
-            
-            # 날짜 정렬
+                        # Sort by date
             if '날짜' in combined_df.columns:
-                combined_df = combined_df.sort_values(by='날짜', ascending=True)
-                combined_df = combined_df.reset_index(drop=True)
-                print(f"✓ 날짜순 정렬 완료")
-            
-            # 7. 시트 업데이트
+                combined_df = combined_df.sort_values('날짜').reset_index(drop=True)
+                        # 7. 시트 업데이트
             print("구글 시트 업데이트 중...")
             worksheet.clear()
             

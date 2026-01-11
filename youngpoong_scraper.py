@@ -460,50 +460,87 @@ class YoungpoongScraper:
                     print(f"  스크린샷 저장: {screenshot_path}")
                 except:
                     pass
-                return None
             
-            # 4. 테이블에서 데이터 직접 추출
-            print("\n테이블 데이터 추출 중...")
+            # 4. 엑셀 다운로드 버튼 클릭
+            print("\n엑셀 다운로드 버튼 찾는 중...")
+            
+            # 여러 방법으로 엑셀 버튼 찾기 (k-grid-excel class 우선)
+            excel_button = None
+            excel_methods = [
+                # 1. k-grid-excel class (가장 정확)
+                (By.CSS_SELECTOR, "a.k-grid-excel"),
+                (By.CSS_SELECTOR, "a.k-button.k-grid-excel"),
+                (By.XPATH, "//a[contains(@class, 'k-grid-excel')]"),
+                # 2. Class + Text 조합
+                (By.XPATH, "//a[contains(@class, 'k-button-icontext') and text()='Excel']"),
+                (By.XPATH, "//a[contains(@class, 'k-button') and contains(text(), 'Excel') and not(contains(., '판매'))]"),
+            ]
+            
+            for by, selector in excel_methods:
+                try:
+                    elements = self.driver.find_elements(by, selector)
+                    for elem in elements:
+                        # "판매" 텍스트가 없고, 표시되고 활성화된 엘리먼트만 선택
+                        elem_text = elem.text.strip()
+                        if elem.is_displayed() and elem.is_enabled() and '판매' not in elem_text:
+                            excel_button = elem
+                            print(f"✓ 엑셀 다운로드 버튼 찾음 ({by}={selector}), text='{elem_text}'")
+                            break
+                    if excel_button:
+                        break
+                except Exception as e:
+                    continue
+            
+            if not excel_button:
+                print("⚠ 엑셀 다운로드 버튼을 찾을 수 없습니다. 페이지의 버튼들:")
+                buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                for i, btn in enumerate(buttons[:15]):
+                    try:
+                        text = btn.text.strip()
+                        onclick = btn.get_attribute('onclick')
+                        classes = btn.get_attribute('class')
+                        print(f"  [{i}] text='{text}', onclick='{onclick}', class='{classes}'")
+                    except:
+                        pass
+                return None, None
+            
+            # 다운로드 전 파일 목록 확인
+            before_files = set(os.listdir(self.download_dir))
+            
+            # 엑셀 버튼 클릭
             try:
-                # k-grid 내의 테이블 찾기
-                table = self.driver.find_element(By.CSS_SELECTOR, ".k-grid table")
-                print("✓ 테이블 찾음")
-                
-                # 헤더 추출
-                thead = table.find_element(By.TAG_NAME, "thead")
-                header_row = thead.find_element(By.TAG_NAME, "tr")
-                headers = [cell.text.strip() for cell in header_row.find_elements(By.TAG_NAME, "th")]
-                headers = [h for h in headers if h]  # 빈 헤더 제거
-                print(f"✓ 헤더: {len(headers)}개 - {', '.join(headers[:5])}...")
-                
-                # 데이터 추출
-                tbody = table.find_element(By.TAG_NAME, "tbody")
-                data_rows = []
-                for row in tbody.find_elements(By.TAG_NAME, "tr"):
-                    cells = row.find_elements(By.TAG_NAME, "td")
-                    if cells:
-                        row_data = [cell.text.strip() for cell in cells]
-                        # 빈 행이 아니면 추가
-                        if any(cell for cell in row_data):
-                            data_rows.append(row_data)
-                
-                print(f"✓ 데이터 행: {len(data_rows)}행")
-                
-                if not data_rows:
-                    print("⚠ 테이블에 데이터가 없습니다.")
-                    return None
-                
-                # DataFrame 생성
-                df = pd.DataFrame(data_rows, columns=headers)
-                print(f"✓ DataFrame 생성: {len(df)}행 x {len(df.columns)}열")
-                
-                return df
-                
-            except Exception as e:
-                print(f"⚠ 테이블 데이터 추출 오류: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                return None
+                self.driver.execute_script("arguments[0].click();", excel_button)
+                print("✓ 엑셀 다운로드 버튼 클릭 (JS)")
+            except:
+                excel_button.click()
+                print("✓ 엑셀 다운로드 버튼 클릭")
+            
+            # 다운로드 완료 대기
+            print("다운로드 완료 대기 중...")
+            time.sleep(5)
+            
+            # 새로 다운로드된 파일 찾기
+            after_files = set(os.listdir(self.download_dir))
+            new_files = after_files - before_files
+            
+            if new_files:
+                # 가장 최근 파일 찾기
+                excel_files = [f for f in new_files if f.endswith(('.xls', '.xlsx'))]
+                if excel_files:
+                    latest_file = max(excel_files, key=lambda f: os.path.getctime(os.path.join(self.download_dir, f)))
+                    excel_path = os.path.join(self.download_dir, latest_file)
+                    print(f"✓ 엑셀 파일 다운로드 완료: {latest_file}")
+                    return excel_path, query_date_str
+            
+            # 대체 방법: downloads 폴더에서 최근 파일 찾기
+            excel_files = glob.glob(os.path.join(self.download_dir, "*.xls*"))
+            if excel_files:
+                latest_file = max(excel_files, key=os.path.getctime)
+                print(f"✓ 엑셀 파일 발견: {os.path.basename(latest_file)}")
+                return latest_file, query_date_str
+            
+            print("⚠ 다운로드된 엑셀 파일을 찾을 수 없습니다.")
+            return None, None
             
         except Exception as e:
             print(f"데이터 스크랩 오류: {str(e)}")
@@ -511,50 +548,88 @@ class YoungpoongScraper:
             traceback.print_exc()
             return None, None
     
-    def upload_to_google_sheets(self, df, query_date):
-        """구글 시트에 데이터 업로드 (DataFrame 직접 사용)"""
+    def upload_to_google_sheets(self, excel_file_path, query_date):
+        """구글 시트에 데이터 업로드"""
         try:
             print("\n=== 구글 시트 업로드 시작 ===")
             
-            if df is None or len(df) == 0:
-                print("⚠ 업로드할 데이터가 없습니다.")
+            # 1. 엑셀 파일 읽기
+            print(f"엑셀 파일 읽기: {excel_file_path}")
+            
+            # 엑셀 파일 전체 읽기 (헤더 없이)
+            df_raw = pd.read_excel(excel_file_path, header=None)
+            print(f"✓ 엑셀 원본 데이터: {len(df_raw)}행 x {len(df_raw.columns)}열")
+            
+            # "ISBN" 또는 "상품명" 헤더가 있는 행 찾기
+            header_row_idx = None
+            for idx, row in df_raw.iterrows():
+                row_values = [str(x) for x in row.values if pd.notna(x) and str(x).strip() != '']
+                row_str = ' '.join(row_values)
+                if 'ISBN' in row_str or '상품명' in row_str or '도서명' in row_str:
+                    header_row_idx = idx
+                    print(f"✓ 헤더 행 발견: {idx}행")
+                    break
+            
+            if header_row_idx is None:
+                print("⚠ 헤더를 찾을 수 없습니다.")
                 return False
             
-            print(f"✓ DataFrame: {len(df)}행 x {len(df.columns)}열")
+            # 헤더 추출 - 빈 컬럼 제거
+            headers_raw = df_raw.iloc[header_row_idx].tolist()
             
-            # 1. 데이터 정제
-            # 합계 행 제거
-            df = df[~df.apply(lambda r: any('합계' in str(c) or '합 계' in str(c) or '총' in str(c) for c in r.values), axis=1)]
-            df = df.dropna(how='all')
+            # 유효한 헤더만 추출
+            valid_col_indices = []
+            clean_headers = []
+            for i, header in enumerate(headers_raw):
+                if pd.notna(header) and str(header).strip() != '':
+                    valid_col_indices.append(i)
+                    clean_headers.append(str(header).strip())
+            
+            print(f"✓ 유효한 컬럼: {len(clean_headers)}개")
+            print(f"  컬럼명: {', '.join(clean_headers[:5])}...")
+            
+            # 데이터 행 추출
+            data_rows = df_raw.iloc[header_row_idx + 1:, valid_col_indices].copy()
+            data_rows.columns = clean_headers
+            data_rows = data_rows.reset_index(drop=True)
+            
+            print(f"✓ 초기 데이터 로드: {len(data_rows)}행")
+            
+            # "합 계" 행 제거
+            mask = data_rows.apply(lambda row: any('합 계' in str(cell) or '합계' in str(cell) for cell in row.values), axis=1)
+            data_rows = data_rows[~mask]
+            print(f"✓ 합계 행 제거 후: {len(data_rows)}행")
+            
+            # 모든 셀이 비어있거나 nan인 행 제거
+            data_rows = data_rows.dropna(how='all')
+            print(f"✓ 빈 행 제거 후: {len(data_rows)}행")
             
             # ISBN 컬럼이 있으면 ISBN 없는 행 제거
-            if 'ISBN' in df.columns:
-                df = df[df['ISBN'].notna() & (df['ISBN'] != '')]
+            if 'ISBN' in data_rows.columns:
+                data_rows = data_rows[data_rows['ISBN'].notna() & (data_rows['ISBN'] != '')]
+                print(f"✓ ISBN 없는 행 제거 후: {len(data_rows)}행")
             
-            df = df.fillna('').infer_objects(copy=False)
-            
-            print(f"✓ 정제 후: {len(df)}행")
-            
-            print(f"✓ 정제 후: {len(df)}행")
+            # NaN 값을 빈 문자열로 변환
+            df = data_rows.fillna('')
             
             # 2. 칼럼명 통일
             rename_dict = {
                 '바코드': 'ISBN',
                 '출판사명': '출판사',
-                '상품명': '도서명',
+                '조회기간': '날짜'
             }
-            df.rename(columns=rename_dict, inplace=True)
-            print(f"✓ 칼럼명 통일 완료")
+            for old_name, new_name in rename_dict.items():
+                if old_name in df.columns:
+                    df.rename(columns={old_name: new_name}, inplace=True)
+                    print(f"✓ 칼럼명 변경: {old_name} → {new_name}")
             
-            # 3. 업로드날짜, 날짜, UpdatedAt 추가
+            # 3. 업로드날짜, 날짜 컬럼 추가
             upload_date = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d')
-            updated_at = datetime.now(pytz.timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
             df.insert(0, '날짜', query_date)
             df.insert(0, '업로드날짜', upload_date)
-            df['UpdatedAt'] = updated_at
             print(f"✓ 업로드날짜({upload_date}), 날짜({query_date}) 컬럼 추가")
             
-            # 4. 구글 시트 연결
+            # 3. 구글 시트 연결
             print("구글 시트 연결 중...")
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
@@ -565,12 +640,12 @@ class YoungpoongScraper:
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
-            # 5. 스프레드시트 열기
+            # 4. 스프레드시트 열기
             spreadsheet_id = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
             spreadsheet = client.open_by_key(spreadsheet_id)
             print("✓ 구글 시트 연결 완료")
             
-            # 6. "영풍문고" 시트 가져오기 또는 생성
+            # 5. "영풍문고" 시트 가져오기 또는 생성
             try:
                 worksheet = spreadsheet.worksheet("영풍문고")
                 print("✓ 기존 '영풍문고' 시트 찾음")
@@ -587,7 +662,7 @@ class YoungpoongScraper:
                 print(f"⚠ 데이터 검수 중 오류: {str(e)}")
                 validation_warnings = []
             
-            # 7. 기존 데이터 가져오기
+            # 6. 기존 데이터 가져오기
             existing_data = worksheet.get_all_values()
             
             if existing_data and len(existing_data) > 1:
@@ -598,22 +673,13 @@ class YoungpoongScraper:
                 
                 print(f"✓ 기존 데이터: {len(existing_df)}행")
                 
-                # 컬럼명이 다른 경우 처리
-                if set(df.columns) != set(existing_df.columns):
-                    print(f"⚠ 컬럼명 불일치 - 기존: {list(existing_df.columns)}, 새: {list(df.columns)}")
-                    for col in existing_df.columns:
-                        if col not in df.columns:
-                            df[col] = ''
-                    df = df[existing_df.columns]
-                    print(f"✓ 컬럼명 맞춤 완료")
-                
                 combined_df = pd.concat([existing_df, df], ignore_index=True)
                 print(f"✓ 데이터 병합: {len(combined_df)}행")
             else:
                 combined_df = df
                 print("✓ 첫 데이터 업로드")
             
-            # 8. 3년 이상된 데이터 삭제
+            # 7. 3년 이상된 데이터 삭제
             if '업로드날짜' in combined_df.columns:
                 three_years_ago = (datetime.now(pytz.timezone('Asia/Seoul')) - timedelta(days=365*3)).strftime('%Y-%m-%d')
                 original_len = len(combined_df)
@@ -622,13 +688,11 @@ class YoungpoongScraper:
                 if removed > 0:
                     print(f"✓ 3년 이상된 데이터 {removed}행 삭제")
             
-            # 날짜 정렬
+            # Sort by date
             if '날짜' in combined_df.columns:
-                combined_df = combined_df.sort_values(by='날짜', ascending=True)
-                combined_df = combined_df.reset_index(drop=True)
-                print(f"✓ 날짜순 정렬 완료")
+                combined_df = combined_df.sort_values('날짜').reset_index(drop=True)
             
-            # 9. 시트 업데이트
+            # 8. 시트 업데이트
             print("구글 시트 업데이트 중...")
             worksheet.clear()
             
@@ -698,12 +762,12 @@ if __name__ == "__main__":
                     print(f"{'='*60}")
                     
                     try:
-                        # 판매 데이터 스크랩 (DataFrame 반환)
-                        df = scraper.scrape_sales_data(date)
+                        # 판매 데이터 스크랩
+                        excel_path, _ = scraper.scrape_sales_data(date)
                         
                         # 구글 시트 업로드
-                        if df is not None and len(df) > 0:
-                            if scraper.upload_to_google_sheets(df, date):
+                        if excel_path:
+                            if scraper.upload_to_google_sheets(excel_path, date):
                                 success_count += 1
                                 print(f"✅ {date} 데이터 업로드 완료!")
                             else:
@@ -711,7 +775,7 @@ if __name__ == "__main__":
                                 print(f"⚠ {date} 데이터 업로드 실패")
                         else:
                             failed_dates.append(date)
-                            print(f"⚠ {date} 데이터 스크랩 실패 (데이터 없음)")
+                            print(f"⚠ {date} 데이터 스크랩 실패")
                             
                     except Exception as e:
                         failed_dates.append(date)
