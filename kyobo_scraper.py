@@ -345,55 +345,37 @@ class KyoboScraper:
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매정보')]"))
             )
             
-            # ActionChains를 사용하여 마우스 호버 (요소에 크기가 없으면 ActionChains 대신 JS로 처리)
-            actions = ActionChains(self.driver)
+            # ActionChains는 CI headless 환경에서 W3C 동작 실패를 자주 일으키므로
+            # 여기서는 JavaScript 기반으로 메뉴를 노출/클릭 시도한다.
             tried = False
             try:
-                # 요소의 offset 크기를 확인해서 ActionChains가 실패할 가능성이 있는지 먼저 판단
-                try:
-                    off_w = self.driver.execute_script('return arguments[0].offsetWidth;', sales_menu)
-                    off_h = self.driver.execute_script('return arguments[0].offsetHeight;', sales_menu)
-                except Exception:
-                    off_w = off_h = None
-
-                if off_w and off_h and int(off_w) > 0 and int(off_h) > 0:
-                    try:
-                        actions.move_to_element(sales_menu).perform()
-                        print("✓ 판매정보 메뉴 호버 (ActionChains)")
-                        tried = True
-                    except Exception as e:
-                        print(f"호버 실패 (ActionChains): {e} — JS 대체 시도")
-                else:
-                    print(f"판매정보 요소 크기 작음 (offset: {off_w}x{off_h}), ActionChains 생략하고 JS 대체 시도합니다")
-            except Exception as e:
-                print(f"호버 사전 검사 중 오류: {e} — JS 대체 시도")
-                # 1) scrollIntoView + 여러 이벤트 타입 시도
+                # 1) 스크롤하여 보이게 만들고 마우스 이벤트 디스패치
                 try:
                     self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sales_menu)
-                    time.sleep(0.5)
-                    for ev_name in ('mouseover','mouseenter','pointerover'):
-                        try:
-                            self.driver.execute_script(
-                                "var ev = new MouseEvent(arguments[1], {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
-                                sales_menu,
-                                ev_name
-                            )
-                            time.sleep(0.3)
-                        except Exception:
-                            continue
-                    print("✓ 대체 방법으로 마우스 이벤트 디스패치 시도 완료")
-                    tried = True
-                except Exception as e2:
-                    print(f"대체 마우스이벤트 실패: {e2}")
+                except Exception:
+                    pass
+                time.sleep(0.5)
+                for ev_name in ('mouseover', 'mouseenter', 'pointerover'):
+                    try:
+                        self.driver.execute_script(
+                            "var ev = new MouseEvent(arguments[1], {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
+                            sales_menu,
+                            ev_name
+                        )
+                        time.sleep(0.25)
+                    except Exception:
+                        continue
+                print("✓ 대체 방법으로 마우스 이벤트 디스패치 시도 완료")
+                tried = True
 
-                # 2) 요소 내부의 클릭 가능한 앵커/링크가 있으면 직접 클릭 시도
+                # 2) 자식 앵커/버튼 바로 클릭 시도
                 if not tried:
                     try:
                         child = None
                         try:
                             child = sales_menu.find_element(By.XPATH, ".//a|.//button")
                         except:
-                            pass
+                            child = None
                         if child:
                             try:
                                 self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", child)
@@ -406,12 +388,11 @@ class KyoboScraper:
                     except Exception:
                         pass
 
-                # 3) 마지막으로 전체 페이지에서 해당 메뉴 텍스트를 찾아 JS로 클릭 시도
+                # 3) 텍스트 기반으로 동일 텍스트 요소 찾아 클릭
                 if not tried:
                     try:
                         text = sales_menu.text.strip()[:30]
                         if text:
-                            # XPath로 같은 텍스트를 가진 요소 찾아 JS 클릭
                             elems = self.driver.find_elements(By.XPATH, f"//*[contains(text(), '{text}')]")
                             for el in elems:
                                 try:
@@ -426,6 +407,8 @@ class KyoboScraper:
 
                 if not tried:
                     print("⚠ 판매정보 메뉴 호버/클릭을 위한 모든 대체 방법 실패")
+            except Exception as e:
+                print(f"판매정보 메뉴 활성화 시도 중 오류: {e}")
             # If ActionChains didn't succeed and the above except block didn't run (e.g. inner exception handled),
             # ensure we still attempt JS-based fallbacks.
             if not tried:
