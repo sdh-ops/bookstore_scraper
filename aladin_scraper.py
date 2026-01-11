@@ -14,6 +14,29 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
+
+def _locate_credentials_file():
+    env_json = os.getenv('GOOGLE_CREDENTIALS')
+    if env_json:
+        path = os.path.join(os.getcwd(), 'credentials.json')
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(env_json)
+            return path
+        except Exception:
+            pass
+
+    candidates = [
+        os.path.join(os.getcwd(), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+
 class AladinScraper:
     def __init__(self):
         self.driver = None
@@ -28,15 +51,9 @@ class AladinScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            creds_paths = [
-                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
-                os.path.join(script_dir, 'credentials.json'),
-                os.path.join(script_dir, '..', 'credentials.json'),
-            ]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            creds_path = _locate_credentials_file()
             if not creds_path:
-                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
+                raise FileNotFoundError('credentials.json not found; set GOOGLE_CREDENTIALS secret or upload credentials.json')
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -52,35 +69,30 @@ class AladinScraper:
                 existing_data = worksheet.get_all_values()
                 
                 if existing_data and len(existing_data) > 1:
-                    # 조회기간 또는 날짜 컬럼에서 가장 최근 날짜 찾기
+                    # 조회기간 컬럼에서 가장 최근 날짜 찾기
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
-
-                    # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
-                    if '조회기간' in df.columns:
-                        dates = df['조회기간'].tolist()
-                        print("  조회기간 컬럼 사용")
-                    elif '날짜' in df.columns:
+                    
+                    if '날짜' in df.columns:
                         dates = df['날짜'].tolist()
-                        print("  날짜 컬럼 사용")
+                        # 날짜 형식 필터링
+                        valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
+                        
+                        if valid_dates:
+                            last_date_str = max(valid_dates)
+                            last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
+                            # timezone 추가
+                            korea_tz = pytz.timezone('Asia/Seoul')
+                            last_date = korea_tz.localize(last_date)
+                            print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
+                        else:
+                            # 데이터가 없으면 2026-01-01부터
+                            korea_tz = pytz.timezone('Asia/Seoul')
+                            last_date = korea_tz.localize(datetime(2025, 12, 31))
+                            print(f"✓ 데이터 없음, 2026-01-01부터 시작")
                     else:
-                        dates = []
-                        print("  날짜 관련 컬럼 없음")
-
-                    # 날짜 형식 필터링
-                    valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d]
-
-                    if valid_dates:
-                        last_date_str = max(valid_dates)
-                        last_date = datetime.strptime(last_date_str, '%Y-%m-%d')
-                        # timezone 추가
-                        korea_tz = pytz.timezone('Asia/Seoul')
-                        last_date = korea_tz.localize(last_date)
-                        print(f"✓ 구글시트 마지막 데이터: {last_date_str}")
-                    else:
-                        # 데이터가 없으면 2026-01-01부터
                         korea_tz = pytz.timezone('Asia/Seoul')
                         last_date = korea_tz.localize(datetime(2025, 12, 31))
-                        print(f"✓ 데이터 없음, 2026-01-01부터 시작")
+                        print(f"✓ 조회기간 컬럼 없음, 2026-01-01부터 시작")
                 else:
                     # 시트가 비어있으면 2026-01-01부터
                     korea_tz = pytz.timezone('Asia/Seoul')
@@ -131,13 +143,11 @@ class AladinScraper:
     def setup_driver(self):
         """Chrome 드라이버 설정"""
         chrome_options = Options()
-        # GitHub Actions에서는 headless 모드 필수
-        if os.getenv('GITHUB_ACTIONS'):
-            chrome_options.add_argument('--headless=new')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-software-rasterizer')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
+        if os.getenv('GITHUB_ACTIONS') or os.getenv('CI') or os.getenv('HEADLESS') == '1':
+            try:
+                chrome_options.add_argument('--headless=new')
+            except Exception:
+                chrome_options.add_argument('--headless')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -163,49 +173,6 @@ class AladinScraper:
         
         self.wait = WebDriverWait(self.driver, 10)
         print("✓ Chrome 드라이버 설정 완료")
-
-    def safe_click(self, element, timeout=5):
-        """robust click helper: scroll, try native click, then JS click, then ancestor click"""
-        try:
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-        except Exception:
-            pass
-
-        # try native click if element has size
-        try:
-            size = element.size if element else None
-            if size and size.get('width', 0) > 0 and size.get('height', 0) > 0:
-                try:
-                    element.click()
-                    return True
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        # try JS click
-        try:
-            self.driver.execute_script("arguments[0].click();", element)
-            return True
-        except Exception:
-            pass
-
-        # try clicking ancestor nodes
-        try:
-            el = element
-            for _ in range(4):
-                parent = self.driver.execute_script("return arguments[0].parentNode;", el)
-                if not parent:
-                    break
-                try:
-                    self.driver.execute_script("arguments[0].click();", parent)
-                    return True
-                except Exception:
-                    el = parent
-        except Exception:
-            pass
-
-        return False
     
     def validate_data_integrity(self, df, target_date, worksheet):
         """데이터 무결성 검수"""
@@ -331,12 +298,9 @@ class AladinScraper:
             if not login_button:
                 print("⚠ 로그인 버튼을 찾을 수 없습니다.")
                 return False
-
-            # 안전하게 클릭
-            if self.safe_click(login_button):
-                print("✓ 로그인 버튼 클릭")
-            else:
-                print("✗ 로그인 버튼 클릭 실패, 시도는 했습니다")
+                
+            login_button.click()
+            print("✓ 로그인 버튼 클릭")
             
             time.sleep(3)
             
@@ -392,11 +356,9 @@ class AladinScraper:
                         pass
                 return False
             
-            # 메뉴 클릭 (안전한 클릭 시도)
-            if self.safe_click(sales_menu):
-                print("✓ 판매 통계 메뉴 클릭")
-            else:
-                print("✗ 판매 통계 메뉴 클릭 실패")
+            # 메뉴 클릭
+            self.driver.execute_script("arguments[0].click();", sales_menu)
+            print("✓ 판매 통계 메뉴 클릭")
             time.sleep(3)
             
             # 2. 날짜 설정
@@ -615,15 +577,9 @@ class AladinScraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            creds_paths = [
-                'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
-                os.path.join(script_dir, 'credentials.json'),
-                os.path.join(script_dir, '..', 'credentials.json'),
-            ]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), None)
+            creds_path = _locate_credentials_file()
             if not creds_path:
-                raise FileNotFoundError("credentials.json을 찾을 수 없습니다")
+                raise FileNotFoundError('credentials.json not found; set GOOGLE_CREDENTIALS secret or upload credentials.json')
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -716,7 +672,11 @@ class AladinScraper:
         if self.driver:
             print("\n브라우저를 5초 후 종료합니다...")
             time.sleep(5)
-            self.driver.quit()
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
 
 if __name__ == "__main__":
     # 알라딘 로그인 정보 (환경 변수 우선)

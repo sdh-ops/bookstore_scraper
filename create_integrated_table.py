@@ -9,6 +9,28 @@ import os
 from datetime import datetime
 import pytz
 
+
+def _locate_credentials_file():
+    env_json = os.getenv('GOOGLE_CREDENTIALS')
+    if env_json:
+        path = os.path.join(os.getcwd(), 'credentials.json')
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(env_json)
+            return path
+        except Exception:
+            pass
+
+    candidates = [
+        os.path.join(os.getcwd(), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
 def load_sheet_data(worksheet):
     """시트 데이터를 DataFrame으로 로드"""
     try:
@@ -320,33 +342,10 @@ def main():
     
     # 구글 시트 연결
     print("\n구글 시트 연결 중...")
-    
-    # credentials.json 경로 찾기 (로컬과 GitHub Actions 모두 지원)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    credentials_paths = [
-        'credentials.json',  # 현재 작업 디렉토리 (GitHub Actions)
-        os.path.join(script_dir, 'credentials.json'),  # 스크립트와 같은 폴더
-        os.path.join(script_dir, '..', 'credentials.json'),  # 상위 폴더 (로컬)
-    ]
-    
-    credentials_path = None
-    for path in credentials_paths:
-        abs_path = os.path.abspath(path)
-        print(f"  확인 중: {abs_path}")
-        if os.path.exists(abs_path):
-            credentials_path = abs_path
-            print(f"  ✓ 찾음: {credentials_path}")
-            break
-    
-    if not credentials_path:
-        print("❌ credentials.json 파일을 찾을 수 없습니다.")
-        print(f"   현재 작업 디렉토리: {os.getcwd()}")
-        print(f"   스크립트 디렉토리: {script_dir}")
-        return
-    
-    print(f"✓ credentials.json 찾음: {credentials_path}")
-    
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credentials_path = _locate_credentials_file()
+    if not credentials_path:
+        raise FileNotFoundError('credentials.json not found; set GOOGLE_CREDENTIALS secret or upload credentials.json')
     credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
     gc = gspread.authorize(credentials)
     
@@ -367,7 +366,28 @@ def main():
     if integrated.empty:
         print("⚠ 통합할 데이터가 없습니다.")
         return
-    
+    # 3년 보존 정책 적용 (업로드날짜 우선, 없으면 조회 날짜 기준)
+    try:
+        kst = pytz.timezone('Asia/Seoul')
+        three_years_ago = (datetime.now(kst) - pd.Timedelta(days=365*3)).replace(tzinfo=None)
+
+        # parse 업로드날짜
+        upload_dt = pd.to_datetime(integrated.get('업로드날짜', pd.Series([''] * len(integrated))), errors='coerce')
+        # parse 조회 날짜
+        date_dt = pd.to_datetime(integrated.get('날짜', pd.Series([''] * len(integrated))), errors='coerce')
+
+        keep_mask = pd.Series(False, index=integrated.index)
+        # keep if upload_dt is valid and within 3 years
+        keep_mask = keep_mask | (upload_dt.dt.tz_localize(None) >= three_years_ago)
+        # or keep if upload_dt invalid but 조회날짜 within 3 years
+        keep_mask = keep_mask | (upload_dt.isna() & date_dt.dt.tz_localize(None).ge(three_years_ago))
+
+        filtered = integrated[keep_mask.fillna(False)].copy()
+        print(f"✓ 3년 보존 필터 적용: 원본 {len(integrated)}행 -> 보존 {len(filtered)}행")
+        integrated = filtered
+    except Exception as e:
+        print(f"⚠ 3년 보존 필터 적용 중 오류: {e}")
+
     # 통합테이블 업데이트
     update_integrated_sheet(gc, spreadsheet_id, integrated)
     

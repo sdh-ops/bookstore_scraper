@@ -19,10 +19,37 @@ class Yes24Scraper:
         self.driver = None
         self.wait = None
         self.download_dir = None
+
+
+def _locate_credentials_file():
+    env_json = os.getenv('GOOGLE_CREDENTIALS')
+    if env_json:
+        path = os.path.join(os.getcwd(), 'credentials.json')
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(env_json)
+            return path
+        except Exception:
+            pass
+
+    candidates = [
+        os.path.join(os.getcwd(), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), 'credentials.json'),
+        os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
         
     def setup_driver(self):
         """Chrome 드라이버 설정"""
         chrome_options = Options()
+        if os.getenv('GITHUB_ACTIONS') or os.getenv('CI') or os.getenv('HEADLESS') == '1':
+            try:
+                chrome_options.add_argument('--headless=new')
+            except Exception:
+                chrome_options.add_argument('--headless')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -58,9 +85,9 @@ class Yes24Scraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
-            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            creds_path = _locate_credentials_file()
+            if not creds_path:
+                raise FileNotFoundError('credentials.json not found; set GOOGLE_CREDENTIALS secret or upload credentials.json')
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
@@ -78,23 +105,15 @@ class Yes24Scraper:
                     df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
                     print(f"  전체 데이터 행 수: {len(df)}")
                     
-                    # 우선 '조회기간'을 사용하고, 없으면 '날짜' 사용
-                    if '조회기간' in df.columns:
-                        dates = df['조회기간'].tolist()
-                        print("  조회기간 컬럼 사용")
-                    elif '날짜' in df.columns:
+                    if '날짜' in df.columns:
                         dates = df['날짜'].tolist()
-                        print("  날짜 컬럼 사용")
-                    else:
-                        dates = []
-                        print("  날짜 관련 컬럼 없음")
-                    # 날짜 형식 필터링 (YYYY-MM-DD)
-                    valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d and d.count('-') == 2]
-                    existing_dates = set(valid_dates)
-
-                    print(f"  유효한 날짜 개수: {len(existing_dates)}개")
-                    if existing_dates:
-                        print(f"  날짜 범위: {min(existing_dates)} ~ {max(existing_dates)}")
+                        # 날짜 형식 필터링 (YYYY-MM-DD)
+                        valid_dates = [d for d in dates if d and len(d) == 10 and '-' in d and d.count('-') == 2]
+                        existing_dates = set(valid_dates)
+                        
+                        print(f"  유효한 날짜 개수: {len(existing_dates)}개")
+                        if existing_dates:
+                            print(f"  날짜 범위: {min(existing_dates)} ~ {max(existing_dates)}")
             except:
                 print(f"✓ YES24 시트 없음 또는 비어있음")
             
@@ -123,6 +142,19 @@ class Yes24Scraper:
                     print(f"  ... 외 {len(missing_dates) - 10}일")
             else:
                 print("✓ 빠진 날짜 없음 (2026-01-01부터 최신 상태)")
+            
+            return missing_dates
+            
+            while current <= yesterday:
+                missing_dates.append(current.strftime('%Y-%m-%d'))
+                current += timedelta(days=1)
+            
+            if missing_dates:
+                print(f"✓ 빠진 날짜: {len(missing_dates)}일")
+                for date in missing_dates:
+                    print(f"  - {date}")
+            else:
+                print("✓ 빠진 날짜 없음 (최신 상태)")
             
             return missing_dates
             
@@ -755,9 +787,9 @@ class Yes24Scraper:
             scope = ['https://spreadsheets.google.com/feeds',
                      'https://www.googleapis.com/auth/drive']
             
-            script_dir = os.path.dirname(__file__)
-            creds_paths = [os.path.join(script_dir, 'credentials.json'), os.path.join(script_dir, '..', 'credentials.json')]
-            creds_path = next((p for p in creds_paths if os.path.exists(p)), creds_paths[1])
+            creds_path = _locate_credentials_file()
+            if not creds_path:
+                raise FileNotFoundError('credentials.json not found; set GOOGLE_CREDENTIALS secret or upload credentials.json')
             creds = Credentials.from_service_account_file(creds_path, scopes=scope)
             client = gspread.authorize(creds)
             
