@@ -37,9 +37,10 @@ class KyoboScraper:
         self.user = user
         self.pw = pw
         self.driver = None
-        self.download_dir = os.path.join(os.getcwd(), "downloads")
+        self.download_dir = os.path.abspath(os.path.join(os.getcwd(), "downloads"))
         if not os.path.exists(self.download_dir):
             os.makedirs(self.download_dir)
+            print(f"Created download dir: {self.download_dir}")
 
     def setup(self):
         opts = webdriver.ChromeOptions()
@@ -149,8 +150,18 @@ class KyoboScraper:
             EC.element_to_be_clickable((By.ID, "btn_ExcelDown"))
         )
         self.driver.execute_script("arguments[0].click();", excel_btn)
-        time.sleep(10)
-        return True
+        
+        # Wait for download to complete
+        print(f"Waiting for download in: {self.download_dir}")
+        for i in range(30):
+            files = [f for f in os.listdir(self.download_dir) if f.endswith(('.xls', '.xlsx')) and not f.endswith('.crdownload')]
+            if files:
+                print(f"Found {len(files)} file(s) after {i+1}s")
+                return True
+            time.sleep(1)
+        
+        print(f"Download timeout - no file found in {self.download_dir}")
+        return False
 
     def upload_to_google_sheets(self, excel_path, date_str):
         df_raw = pd.read_excel(excel_path, header=None)
@@ -213,16 +224,23 @@ class KyoboScraper:
 
 def main():
     bot = KyoboScraper(os.getenv("KYOBO_ID"), os.getenv("KYOBO_PASSWORD"))
-    bot.setup()
-    if not bot.login():
-        print("LOGIN FAILED")
-        return
-
-    dates = bot.get_missing_dates()
-    print("DATES TO FETCH:", dates)
-
-    for d in dates:
-        print("FETCH", d)
+        if not bot.scrape_date(d):
+            print(f"SKIP {d} - scrape failed")
+            continue
+        
+        # Find downloaded file
+        files = [f for f in os.listdir(bot.download_dir) if f.endswith((".xls", ".xlsx"))]
+        if files:
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(bot.download_dir, x)), reverse=True)
+            excel_path = os.path.join(bot.download_dir, files[0])
+            print(f"UPLOAD {excel_path}")
+            bot.upload_to_google_sheets(excel_path, d)
+            # Clean up downloaded file
+            try:
+                os.remove(excel_path)
+                print(f"REMOVED {excel_path}")
+            except:
+                pass
         bot.scrape_date(d)
         
         # Find downloaded file
