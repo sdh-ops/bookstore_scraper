@@ -100,7 +100,7 @@ class KyoboScraper:
                 existing = set(df["날짜"].dropna().tolist())
 
         korea = pytz.timezone("Asia/Seoul")
-        start = datetime(2026, 1, 1)
+        start = korea.localize(datetime(2026, 1, 1))
         yesterday = datetime.now(korea) - timedelta(days=1)
 
         out = []
