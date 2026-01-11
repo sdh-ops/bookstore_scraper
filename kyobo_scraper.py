@@ -345,10 +345,24 @@ class KyoboScraper:
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매정보')]"))
             )
             
-            # ActionChains를 사용하여 마우스 호버
+            # ActionChains를 사용하여 마우스 호버 (호버 불가 시 JS 대체)
             actions = ActionChains(self.driver)
-            actions.move_to_element(sales_menu).perform()
-            print("✓ 판매정보 메뉴 호버")
+            try:
+                actions.move_to_element(sales_menu).perform()
+                print("✓ 판매정보 메뉴 호버")
+            except Exception as e:
+                print(f"호버 실패 (ActionChains): {e} — JS 대체 시도")
+                try:
+                    # 요소가 보이도록 스크롤하고 mouseover 이벤트를 디스패치
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sales_menu)
+                    time.sleep(0.5)
+                    self.driver.execute_script(
+                        "var ev = new MouseEvent('mouseover', {bubbles:true, cancelable:true}); arguments[0].dispatchEvent(ev);",
+                        sales_menu
+                    )
+                    print("✓ 대체 방법으로 마우스 오버 트리거 성공")
+                except Exception as e2:
+                    print(f"대체 마우스오버 실패: {e2}")
             time.sleep(1)
             
             # 2. 판매조회 서브메뉴 클릭

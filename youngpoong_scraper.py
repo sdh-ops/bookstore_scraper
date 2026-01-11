@@ -610,7 +610,8 @@ class YoungpoongScraper:
                 print(f"✓ ISBN 없는 행 제거 후: {len(data_rows)}행")
             
             # NaN 값을 빈 문자열로 변환
-            df = data_rows.fillna('')
+            # fillna에 따른 dtype 다운캐스트 경고를 피하기 위해 명시적으로 object 타입으로 변환
+            df = data_rows.fillna('').astype(object)
             
             # 2. 칼럼명 통일
             rename_dict = {
