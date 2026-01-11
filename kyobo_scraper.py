@@ -345,14 +345,28 @@ class KyoboScraper:
                 EC.presence_of_element_located((By.XPATH, "//a[contains(text(), '판매정보')]"))
             )
             
-            # ActionChains를 사용하여 마우스 호버 (호버 불가 시 JS 대체)
+            # ActionChains를 사용하여 마우스 호버 (요소에 크기가 없으면 ActionChains 대신 JS로 처리)
             actions = ActionChains(self.driver)
+            tried = False
             try:
-                actions.move_to_element(sales_menu).perform()
-                print("✓ 판매정보 메뉴 호버")
+                # 요소의 offset 크기를 확인해서 ActionChains가 실패할 가능성이 있는지 먼저 판단
+                try:
+                    off_w = self.driver.execute_script('return arguments[0].offsetWidth;', sales_menu)
+                    off_h = self.driver.execute_script('return arguments[0].offsetHeight;', sales_menu)
+                except Exception:
+                    off_w = off_h = None
+
+                if off_w and off_h and int(off_w) > 0 and int(off_h) > 0:
+                    try:
+                        actions.move_to_element(sales_menu).perform()
+                        print("✓ 판매정보 메뉴 호버 (ActionChains)")
+                        tried = True
+                    except Exception as e:
+                        print(f"호버 실패 (ActionChains): {e} — JS 대체 시도")
+                else:
+                    print(f"판매정보 요소 크기 작음 (offset: {off_w}x{off_h}), ActionChains 생략하고 JS 대체 시도합니다")
             except Exception as e:
-                print(f"호버 실패 (ActionChains): {e} — JS 대체 시도")
-                tried = False
+                print(f"호버 사전 검사 중 오류: {e} — JS 대체 시도")
                 # 1) scrollIntoView + 여러 이벤트 타입 시도
                 try:
                     self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", sales_menu)

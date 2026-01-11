@@ -181,6 +181,17 @@ def merge_with_fallback(kyobo_df, aladin_df, youngpoong_df, yes24_df):
     integrated = pd.DataFrame()
     integrated['날짜'] = merged['날짜']
     integrated['ISBN'] = merged['ISBN']
+
+    def get_series_or_default(df, col, default=0):
+        """컬럼이 있으면 Series로 반환, 없으면 default 값을 가진 Series 반환"""
+        if col in df.columns:
+            s = df[col]
+            # 만약 스칼라가 들어있다면 길이에 맞는 Series로 변환
+            if not hasattr(s, 'fillna'):
+                return pd.Series([s] * len(df), index=df.index)
+            return s.fillna(default)
+        else:
+            return pd.Series([default] * len(df), index=df.index)
     
     # 도서명: 교보 → 알라딘 → 영풍 → YES24 (빈 문자열도 Fallback)
     integrated['도서명'] = merged.get('도서명', '')
@@ -262,13 +273,13 @@ def merge_with_fallback(kyobo_df, aladin_df, youngpoong_df, yes24_df):
         integrated['요일'] = ''
     
     # 판매수량 칼럼들
-    integrated['교보_오프'] = merged.get('교보_오프', 0).fillna(0).astype(int)
-    integrated['교보_온'] = merged.get('교보_온', 0).fillna(0).astype(int)
-    integrated['교보_법인'] = merged.get('교보_법인', 0).fillna(0).astype(int)
-    integrated['교보계'] = merged.get('교보계', 0).fillna(0).astype(int)
-    integrated['YES24'] = merged.get('YES24', 0).fillna(0).astype(int)
-    integrated['알라딘'] = merged.get('알라딘', 0).fillna(0).astype(int)
-    integrated['영풍'] = merged.get('영풍', 0).fillna(0).astype(int)
+    integrated['교보_오프'] = get_series_or_default(merged, '교보_오프', 0).astype(int)
+    integrated['교보_온'] = get_series_or_default(merged, '교보_온', 0).astype(int)
+    integrated['교보_법인'] = get_series_or_default(merged, '교보_법인', 0).astype(int)
+    integrated['교보계'] = get_series_or_default(merged, '교보계', 0).astype(int)
+    integrated['YES24'] = get_series_or_default(merged, 'YES24', 0).astype(int)
+    integrated['알라딘'] = get_series_or_default(merged, '알라딘', 0).astype(int)
+    integrated['영풍'] = get_series_or_default(merged, '영풍', 0).astype(int)
     
     # 일계 계산
     integrated['일계'] = (
