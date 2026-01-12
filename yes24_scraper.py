@@ -539,22 +539,38 @@ class Yes24Scraper:
                 # 날짜 입력 필드 찾기 (여러 방법 시도)
                 date_inputs = []
                 
-                # 방법 1: type='date' 필드
+                # 방법 1: flatpickr-input 클래스 (가장 정확)
                 try:
-                    date_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='date']")
+                    date_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input.flatpickr-input")
                     if len(date_inputs) >= 2:
-                        print(f"✓ type='date' 필드 {len(date_inputs)}개 발견")
+                        print(f"✓ flatpickr-input 필드 {len(date_inputs)}개 발견")
                 except:
                     pass
                 
-                # 방법 2: 모든 input 필드 중 날짜 관련
+                # 방법 2: gtDate 클래스
                 if len(date_inputs) < 2:
                     try:
-                        all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                        date_inputs = [inp for inp in all_inputs if inp.is_displayed() and 
-                                       inp.get_attribute('type') in ['date', 'text'] and 
-                                       len(inp.get_attribute('value') or '') >= 8]
-                        print(f"✓ 날짜 관련 필드 {len(date_inputs)}개 발견")
+                        date_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input.gtDate")
+                        if len(date_inputs) >= 2:
+                            print(f"✓ gtDate 필드 {len(date_inputs)}개 발견")
+                    except:
+                        pass
+                
+                # 방법 3: form-control 클래스와 날짜 관련 속성
+                if len(date_inputs) < 2:
+                    try:
+                        date_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input.form-control[name*='Date'], input.form-control[id*='Date']")
+                        if len(date_inputs) >= 2:
+                            print(f"✓ form-control Date 필드 {len(date_inputs)}개 발견")
+                    except:
+                        pass
+                
+                # 방법 4: type='date' 필드
+                if len(date_inputs) < 2:
+                    try:
+                        date_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='date']")
+                        if len(date_inputs) >= 2:
+                            print(f"✓ type='date' 필드 {len(date_inputs)}개 발견")
                     except:
                         pass
                 
@@ -924,6 +940,13 @@ if __name__ == "__main__":
                         if scraper.upload_to_google_sheets(excel_path, date):
                             success_count += 1
                             print(f"✅ {date} 데이터 업로드 완료!")
+                            # 업로드 완료 후 로컬 파일 삭제
+                            try:
+                                if os.path.exists(excel_path):
+                                    os.remove(excel_path)
+                                    print(f"🗑️ 로컬 파일 삭제: {excel_path}")
+                            except Exception as del_e:
+                                print(f"⚠ 파일 삭제 실패: {del_e}")
                         else:
                             failed_dates.append(date)
                             print(f"⚠ {date} 데이터 업로드 실패")

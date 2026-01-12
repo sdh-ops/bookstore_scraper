@@ -278,10 +278,22 @@ def merge_with_fallback(kyobo_df, aladin_df, youngpoong_df, yes24_df):
         integrated['영풍']
     )
     
-    # UpdatedAt_yes24 (YES24 스크래퍼에서 가져오기)
-    integrated['UpdatedAt_yes24'] = merged.get('UpdatedAt_yes24', '')
+    # UpdatedAt_yes24 (YES24 스크래퍼에서 가장 최신 타임스탬프)
+    updated_at_cols = ['UpdatedAt_yes24']
     if 'UpdatedAt_yes24_YES24' in merged.columns:
-        integrated['UpdatedAt_yes24'] = integrated['UpdatedAt_yes24'].fillna(merged['UpdatedAt_yes24_YES24'])
+        updated_at_cols.append('UpdatedAt_yes24_YES24')
+    
+    latest_timestamp = ''
+    for col in updated_at_cols:
+        if col in merged.columns:
+            col_values = merged[col].dropna()
+            col_values = col_values[col_values != '']
+            if not col_values.empty:
+                latest = col_values.max()
+                if latest > latest_timestamp:
+                    latest_timestamp = latest
+    
+    integrated['UpdatedAt_yes24'] = latest_timestamp
     
     # UpdatedAt 추가 (현재 한국시간 - 통합테이블 생성 시각)
     kst = pytz.timezone('Asia/Seoul')
