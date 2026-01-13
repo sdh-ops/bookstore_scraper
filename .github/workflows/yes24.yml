@@ -19,12 +19,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget tar
 
-      - name: Install cloudflared
-        run: |
-          wget -q -O cloudflared.tgz https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.tgz
-          tar -xzf cloudflared.tgz
-          chmod +x cloudflared
-          sudo mv cloudflared /usr/local/bin/
+      - name: Start cloudflared tunnel
+        uses: cloudflare/cloudflared-action@v1
+        with:
+          args: tunnel --url http://127.0.0.1:5000
+        # Optional: if you use a tunnel token, set CLOUDFLARED_TOKEN in Secrets and uncomment the env line below
+        # env:
+        #   TUNNEL_TOKEN: ${{ secrets.CLOUDFLARED_TOKEN }}
 
       - name: Install Python requirements
         run: |
@@ -40,6 +41,13 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
           python main.py
+
+      - name: Run integrated table generator
+        if: success()
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: |
+          python create_integrated_table.py
 
       - name: Upload artifacts
         if: always()
