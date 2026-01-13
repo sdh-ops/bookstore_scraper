@@ -19,14 +19,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget tar
 
-      - name: Start ngrok tunnel
-        uses: wernight/ngrok-action@v3
-        with:
-          auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
-          addr: 5000
-          proto: http
-        env:
-          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: Install cloudflared binary
+        run: |
+          set -euo pipefail
+          URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.tgz"
+          echo "Downloading cloudflared from: $URL"
+          # try curl, then wget, with retries
+          rm -f cloudflared.tgz
+          for i in 1 2 3; do
+            if command -v curl >/dev/null 2>&1; then
+              curl -fL --retry 3 --retry-delay 2 -o cloudflared.tgz "$URL" && break || true
+            fi
+            if command -v wget >/dev/null 2>&1; then
+              wget -q -O cloudflared.tgz "$URL" && break || true
+            fi
+            sleep 1
+          done
+          if [ ! -s cloudflared.tgz ]; then
+            echo "ERROR: failed to download cloudflared.tgz" >&2
+            ls -la
+            exit 1
+          fi
+          tar -xzf cloudflared.tgz || { echo "ERROR: tar failed" >&2; exit 1; }
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/cloudflared
+          echo "cloudflared installed:" && /usr/local/bin/cloudflared --version || true
 
       - name: Install Python requirements
         run: |
