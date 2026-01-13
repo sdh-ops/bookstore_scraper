@@ -345,10 +345,55 @@ class Yes24Scraper:
                 # 2. 휴대폰번호 입력
                 print(f"휴대폰 번호 자동 입력 중: {selected_phone}")
                 try:
-                    phone_field = self.driver.find_element(By.CSS_SELECTOR, "input[type='text']")
-                    phone_field.clear()
-                    phone_field.send_keys(selected_phone)
-                    print(f"✓ 휴대폰 번호 입력 완료")
+                    phone_field = None
+                    phone_selectors = [
+                        "input[type='tel']",
+                        "input[type='text']",
+                        "input[type='number']",
+                        "input[name*='phone']",
+                        "input[id*='phone']",
+                        "input[name*='hp']",
+                        "input[id*='hp']",
+                        "input[placeholder*='휴대폰']",
+                        "input[placeholder*='핸드폰']",
+                    ]
+                    for sel in phone_selectors:
+                        try:
+                            elems = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                            for e in elems:
+                                try:
+                                    if e.is_displayed() and e.is_enabled():
+                                        phone_field = e
+                                        break
+                                except:
+                                    continue
+                            if phone_field:
+                                break
+                        except:
+                            continue
+
+                    if not phone_field:
+                        # last resort: any visible text-like input
+                        try:
+                            inputs = self.driver.find_elements(By.TAG_NAME, 'input')
+                            for e in inputs:
+                                t = e.get_attribute('type') or ''
+                                if t.lower() in ('text', 'tel', 'number'):
+                                    try:
+                                        if e.is_displayed() and e.is_enabled():
+                                            phone_field = e
+                                            break
+                                    except:
+                                        continue
+                        except:
+                            pass
+
+                    if phone_field:
+                        phone_field.clear()
+                        phone_field.send_keys(selected_phone)
+                        print(f"✓ 휴대폰 번호 입력 완료")
+                    else:
+                        print("⚠ 휴대폰 입력 필드를 찾을 수 없습니다.")
                 except Exception as e:
                     print(f"⚠ 휴대폰 번호 입력 실패: {e}")
                 
@@ -427,21 +472,61 @@ class Yes24Scraper:
                 # 5. 인증번호 필드에 자동 입력
                 print("인증번호 자동 입력 중...")
                 try:
-                    # 두 번째 input 필드가 인증번호 필드
-                    auth_fields = self.driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
-                    if len(auth_fields) >= 2:
-                        auth_field = auth_fields[1]  # 두 번째 필드
-                    else:
-                        auth_field = self.driver.find_element(By.XPATH, "//input[@placeholder='인증번호' or contains(@id, 'auth')]")
-                    
-                    auth_field.clear()
-                    auth_field.send_keys(auth_code)
-                    print(f"✓ 인증번호 입력: {auth_code}")
-                    if progress_callback:
+                    auth_field = None
+                    auth_selectors = [
+                        "input[placeholder*='인증']",
+                        "input[name*='auth']",
+                        "input[id*='auth']",
+                        "input[type='tel']",
+                        "input[type='number']",
+                        "input[type='text']",
+                        "input[placeholder*='인증번호']",
+                    ]
+                    for sel in auth_selectors:
                         try:
-                            progress_callback({'event': 'auth_entered', 'text': f'인증번호 입력: {auth_code}'})
-                        except Exception:
+                            elems = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                            for e in elems:
+                                try:
+                                    if e.is_displayed() and e.is_enabled():
+                                        auth_field = e
+                                        break
+                                except:
+                                    continue
+                            if auth_field:
+                                break
+                        except:
+                            continue
+
+                    if not auth_field:
+                        # fallback: consider any visible short input fields (likely OTP)
+                        try:
+                            inputs = self.driver.find_elements(By.TAG_NAME, 'input')
+                            for e in inputs:
+                                try:
+                                    if not e.is_displayed() or not e.is_enabled():
+                                        continue
+                                    val = e.get_attribute('value') or ''
+                                    t = (e.get_attribute('type') or '').lower()
+                                    # likely empty and short type
+                                    if t in ('tel', 'number', 'text') and len((val or '').strip()) <= 6:
+                                        auth_field = e
+                                        break
+                                except:
+                                    continue
+                        except:
                             pass
+
+                    if auth_field:
+                        auth_field.clear()
+                        auth_field.send_keys(auth_code)
+                        print(f"✓ 인증번호 입력: {auth_code}")
+                        if progress_callback:
+                            try:
+                                progress_callback({'event': 'auth_entered', 'text': f'인증번호 입력: {auth_code}'})
+                            except Exception:
+                                pass
+                    else:
+                        print("⚠ 인증번호 입력 필드를 찾을 수 없습니다.")
                 except Exception as e:
                     print(f"⚠ 인증번호 입력 실패: {e}")
                 
@@ -1024,7 +1109,14 @@ if __name__ == "__main__":
     import os
     USERNAME = os.getenv('YES24_ID', 'thenan1')
     PASSWORD = os.getenv('YES24_PASSWORD', 'thenan2525!')
-    PHONE = os.getenv('YES24_PHONE', '01040435756')
+    # Prefer PHONE_CHOICE (workflow input) but fall back to YES24_PHONE
+    phone_env = os.getenv('PHONE_CHOICE') or os.getenv('YES24_PHONE') or os.getenv('YES24_PHONE')
+    if phone_env in ('1', '2'):
+        PHONE = '01094603191' if phone_env == '1' else '01040435756'
+    elif phone_env and phone_env.isdigit():
+        PHONE = phone_env
+    else:
+        PHONE = '01040435756'
     
     scraper = Yes24Scraper()
     
@@ -1043,7 +1135,8 @@ if __name__ == "__main__":
         print(f"\n📋 총 {len(missing_dates)}일의 데이터를 수집합니다.")
         
         # 3. 로그인 (SMS 인증)
-        if scraper.login_with_sms(USERNAME, PASSWORD, PHONE):
+        # Pass phone_choice so the function can handle numeric selection, full number, or web selection
+        if scraper.login_with_sms(USERNAME, PASSWORD, phone_choice=os.getenv('PHONE_CHOICE') or PHONE):
             print("\n✅ 로그인 성공! 이제 각 날짜별 데이터를 수집합니다.\n")
             
             success_count = 0
