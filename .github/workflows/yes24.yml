@@ -19,13 +19,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget tar
 
-      - name: Start cloudflared tunnel
-        uses: cloudflare/cloudflared-action@v1
+      - name: Start ngrok tunnel
+        uses: wernight/ngrok-action@v3
         with:
-          args: tunnel --url http://127.0.0.1:5000
-        # Optional: if you use a tunnel token, set CLOUDFLARED_TOKEN in Secrets and uncomment the env line below
-        # env:
-        #   TUNNEL_TOKEN: ${{ secrets.CLOUDFLARED_TOKEN }}
+          auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+          addr: 5000
+          proto: http
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
       - name: Install Python requirements
         run: |
