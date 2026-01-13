@@ -13,81 +13,72 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Python 3.11 설정
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+        name: 서점 판매 데이터 자동 수집 (교보/알라딘/영풍)
 
-      - name: 의존성 설치
-        run: |
-          python -m pip install --upgrade pip
-          pip install selenium webdriver-manager gspread google-auth pandas openpyxl xlrd pytz
+        on:
+          schedule:
+            - cron: '30 20 * * *'  # UTC 20:30 -> KST 05:30
+          workflow_dispatch:
 
-      - name: Chrome 설치
-        uses: browser-actions/setup-chrome@v1
+        jobs:
+          scrape-and-integrate:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout
+                uses: actions/checkout@v4
 
-      - name: ChromeDriver 설치
-        uses: nanasess/setup-chromedriver@v1
+              - name: Setup Python
+                uses: actions/setup-python@v4
+                with:
+                  python-version: '3.11'
 
-      - name: credentials.json 생성
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: |
-          echo "$GOOGLE_CREDENTIALS" > credentials.json
+              - name: Install dependencies
+                run: |
+                  python -m pip install --upgrade pip
+                  pip install selenium webdriver-manager gspread google-auth pandas openpyxl xlrd pytz
 
-      - name: 교보문고 스크래핑
-        env:
-          KYOBO_ID: ${{ secrets.KYOBO_ID }}
-          KYOBO_PASSWORD: ${{ secrets.KYOBO_PASSWORD }}
-        run: |
-          python kyobo_scraper.py
-        continue-on-error: true
+              - name: Create credentials.json
+                env:
+                  GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+                run: |
+                  echo "$GOOGLE_CREDENTIALS" > credentials.json
 
-      - name: 알라딘 스크래핑
-        env:
-          ALADIN_ID: ${{ secrets.ALADIN_ID }}
-          ALADIN_PASSWORD: ${{ secrets.ALADIN_PASSWORD }}
-        run: |
-          python aladin_scraper.py
-        continue-on-error: true
+              - name: Kyobo scraping
+                env:
+                  KYOBO_ID: ${{ secrets.KYOBO_ID }}
+                  KYOBO_PASSWORD: ${{ secrets.KYOBO_PASSWORD }}
+                run: |
+                  python kyobo_scraper.py
+                continue-on-error: true
 
-      - name: 영풍문고 스크래핑
-        env:
-          YOUNGPOONG_ID: ${{ secrets.YOUNGPOONG_ID }}
-          YOUNGPOONG_PASSWORD: ${{ secrets.YOUNGPOONG_PASSWORD }}
-        run: |
-          python youngpoong_scraper.py
-        continue-on-error: true
+              - name: Aladin scraping
+                env:
+                  ALADIN_ID: ${{ secrets.ALADIN_ID }}
+                  ALADIN_PASSWORD: ${{ secrets.ALADIN_PASSWORD }}
+                run: |
+                  python aladin_scraper.py
+                continue-on-error: true
 
-      - name: 통합테이블 생성
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: |
-          python create_integrated_table.py
+              - name: Youngpoong scraping
+                env:
+                  YOUNGPOONG_ID: ${{ secrets.YOUNGPOONG_ID }}
+                  YOUNGPOONG_PASSWORD: ${{ secrets.YOUNGPOONG_PASSWORD }}
+                run: |
+                  python youngpoong_scraper.py
+                continue-on-error: true
 
-      - name: 결과 알림
-        if: always()
-        run: |
-          echo "✅ 서점 판매 데이터 수집 완료 (교보/알라딘/영풍)"
-          echo "⏰ 실행 시간 (KST): $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S')"
-          echo "📌 YES24는 SMS 인증이 필요하여 Base44 UI에서 수동 실행됩니다."
-name: 서점 판매 데이터 자동 수집 (교보/알라딘/영풍)
+              - name: Create integrated table
+                env:
+                  GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+                run: |
+                  python create_integrated_table.py
 
-on:
-  schedule:
-    - cron: '30 20 * * *'  # 한국시간 오전 5:30 (UTC 20:30)
-  workflow_dispatch:
-
-jobs:
-  scrape-and-integrate:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: 체크아웃
-      uses: actions/checkout@v4
-    
-    - name: Python 3.11 설정
-      name: 서점 판매 데이터 자동 수집 (교보/알라딘/영풍)
+              - name: Notify
+                if: always()
+                run: |
+                  echo "✅ 서점 판매 데이터 수집 완료 (교보/알라딘/영풍)"
+                  echo "⏰ 실행 시간 (KST): $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S')"
+                  echo "📌 YES24는 SMS 인증이 필요하여 Base44 UI에서 수동 실행됩니다."
 
       on:
         schedule:
@@ -118,71 +109,68 @@ jobs:
 
             on:
               schedule:
-                - cron: '30 20 * * *'  # 한국시간 오전 5:30 (UTC 20:30)
+                - cron: '30 20 * * *'
               workflow_dispatch:
 
             jobs:
               scrape-and-integrate:
                 runs-on: ubuntu-latest
-
                 steps:
-                  - name: 체크아웃
+                  - name: Checkout
                     uses: actions/checkout@v4
 
-                  - name: Python 3.11 설정
+                  - name: Setup Python
                     uses: actions/setup-python@v4
                     with:
                       python-version: '3.11'
-                      cache: 'pip'
 
-                  - name: 의존성 설치
+                  - name: Install dependencies
                     run: |
-                      pip install --upgrade pip
+                      python -m pip install --upgrade pip
                       pip install selenium webdriver-manager gspread google-auth pandas openpyxl xlrd pytz
 
-                  - name: Chrome 설치
-                    uses: browser-actions/setup-chrome@latest
-
-                  - name: ChromeDriver 설치
-                    uses: nanasess/setup-chromedriver@master
-
-                  - name: credentials.json 생성
+                  - name: Create credentials.json
                     env:
                       GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
                     run: |
                       echo "$GOOGLE_CREDENTIALS" > credentials.json
 
-                  - name: 교보문고 스크래핑
+                  - name: Kyobo
                     env:
                       KYOBO_ID: ${{ secrets.KYOBO_ID }}
                       KYOBO_PASSWORD: ${{ secrets.KYOBO_PASSWORD }}
                     run: |
-                      python kyobo_scraper.py
-                    continue-on-error: true
+                      python kyobo_scraper.py || true
 
-                  - name: 알라딘 스크래핑
+                  - name: Aladin
                     env:
                       ALADIN_ID: ${{ secrets.ALADIN_ID }}
                       ALADIN_PASSWORD: ${{ secrets.ALADIN_PASSWORD }}
                     run: |
-                      python aladin_scraper.py
-                    continue-on-error: true
+                      python aladin_scraper.py || true
 
-                  - name: 영풍문고 스크래핑
+                  - name: Youngpoong
                     env:
                       YOUNGPOONG_ID: ${{ secrets.YOUNGPOONG_ID }}
                       YOUNGPOONG_PASSWORD: ${{ secrets.YOUNGPOONG_PASSWORD }}
                     run: |
-                      python youngpoong_scraper.py
-                    continue-on-error: true
+                      python youngpoong_scraper.py || true
 
-                  - name: 통합테이블 생성
+                  - name: Generate integrated table
+                    env:
+                      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
                     run: |
-                      python create_integrated_table.py
+                      python create_integrated_table.py || true
 
-                  - name: 결과 알림
+                  - name: Upload artifacts
                     if: always()
-                    run: |
+                    uses: actions/upload-artifact@v4
+                    with:
+                      name: bookstore-outputs
+                      path: |
+                        downloads/**
+                        *.xls*
+                        *.xlsx
                       echo "✅ 서점 판매 데이터 수집 완료 (교보/알라딘/영풍)"
                       echo "⏰ 실행 시간 (KST): $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S')"
                       echo "📌 YES24는 SMS 인증이 필요하여 Base44 UI에서 수동 실행됩니다."

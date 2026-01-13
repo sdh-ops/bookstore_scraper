@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# Distribution/build
+dist/
+build/
+*.egg-info/
+
+# Credentials
+credentials.json
+
+# Compiled GUI / dist artifacts
+scraper_gui/
+
+# Downloads and artifacts
+downloads/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Ignore nul accidental file
+nul

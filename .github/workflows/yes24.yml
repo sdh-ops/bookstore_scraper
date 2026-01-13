@@ -1,3 +1,44 @@
+name: Run yes24 scraper (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      phone_choice:
+        description: 'Phone number to use (01094603191 or 01040435756)'
+        required: false
+        default: ''
+
+jobs:
+  run-yes24:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create credentials.json
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: |
+          echo "$GOOGLE_CREDENTIALS" > credentials.json
+
+      - name: Run yes24
+        env:
+          YES24_ID: ${{ secrets.YES24_ID }}
+          YES24_PASSWORD: ${{ secrets.YES24_PASSWORD }}
+          PHONE_CHOICE: ${{ github.event.inputs.phone_choice }}
+          USE_OTP_SERVER: '1'
+        run: |
+          python main.py
 name: YES24 Scraper
 
 on:
@@ -11,57 +52,55 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        name: YES24 Scraper
 
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          name: YES24 Scraper
+        on:
+          workflow_dispatch:
 
-          on:
-            workflow_dispatch:
+        jobs:
+          run:
+            runs-on: ubuntu-latest
+            timeout-minutes: 120
+            steps:
+              name: YES24 Scraper
 
-          jobs:
-            run:
-              runs-on: ubuntu-latest
-              timeout-minutes: 120
-              steps:
-                - name: Checkout
-                  uses: actions/checkout@v4
+              on:
+                workflow_dispatch:
 
-                - name: Setup Python
-                  uses: actions/setup-python@v5
-                  with:
-                    python-version: '3.11'
+              jobs:
+                run:
+                  runs-on: ubuntu-latest
+                  timeout-minutes: 120
+                  steps:
+                    - name: Checkout
+                      uses: actions/checkout@v4
 
-                - name: Install requirements
-                  run: |
-                    python -m pip install --upgrade pip
-                    pip install -r requirements.txt
+                    - name: Setup Python
+                      uses: actions/setup-python@v5
+                      with:
+                        python-version: '3.11'
 
-                - name: Run scraper (no tunnel)
-                  env:
-                    HEADLESS: '1'
-                    YES24_ID: ${{ secrets.YES24_ID }}
-                    YES24_PASSWORD: ${{ secrets.YES24_PASSWORD }}
-                    GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-                  run: |
-                    python main.py || true
+                    - name: Install requirements
+                      run: |
+                        python -m pip install --upgrade pip
+                        pip install -r requirements.txt
 
-                - name: Run integrated table generator
-                  if: success()
-                  env:
-                    GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-                  run: |
-                    python create_integrated_table.py || true
+                    - name: Run main (attempt)
+                      env:
+                        USE_OTP_SERVER: '1'
+                        HEADLESS: '1'
+                        YES24_ID: ${{ secrets.YES24_ID }}
+                        YES24_PASSWORD: ${{ secrets.YES24_PASSWORD }}
+                        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+                      run: |
+                        python main.py || true
 
-                - name: Upload artifacts
-                  if: always()
-                  uses: actions/upload-artifact@v4
-                  with:
-                    name: yes24-outputs
-                    path: |
-                      downloads/**
-                      *.xls*
-                      *.xlsx
+                    - name: Upload artifacts
+                      if: always()
+                      uses: actions/upload-artifact@v4
+                      with:
+                        name: yes24-outputs
+                        path: |
+                          downloads/**
+                          *.xls*
+                          *.xlsx
