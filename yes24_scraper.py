@@ -7,6 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import os
+import sys
 from datetime import datetime, timedelta
 import pytz
 import pandas as pd
@@ -42,15 +43,23 @@ class Yes24Scraper:
         self.driver = None
         self.wait = None
         self.download_dir = None
+        self.external_auth_code = None
 
-    def setup_driver(self):
+    def setup_driver(self, headless=True):
         """Chrome 드라이버 설정"""
         chrome_options = Options()
-        if os.getenv('GITHUB_ACTIONS') or os.getenv('CI') or os.getenv('HEADLESS') == '1':
+        # headless 모드 설정 (기본은 True로 하여 브라우저를 보이지 않게 실행)
+        # 헤드리스 우선순위: 함수 인자 > 환경변수
+        env_headless = os.getenv('HEADLESS') == '1' or os.getenv('CI') or os.getenv('GITHUB_ACTIONS')
+        use_headless = bool(headless) or env_headless
+        if use_headless:
             try:
                 chrome_options.add_argument('--headless=new')
             except Exception:
                 chrome_options.add_argument('--headless')
+            # headless 환경에서 안정적으로 동작하도록 창 크기 지정
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--disable-gpu')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
@@ -168,7 +177,7 @@ class Yes24Scraper:
             yesterday = datetime.now(korea_tz) - timedelta(days=1)
             return [yesterday.strftime('%Y-%m-%d')]
         
-    def login_with_sms(self, user_id="thenan1", password="thenan2525!", phone_number="01040435756"):
+    def login_with_sms(self, user_id="thenan1", password="thenan2525!", phone_choice=None, auth_code=None, phone_number=None, progress_callback=None, auth_wait_timeout=300):
         """YES24 SCM 로그인 (SMS 인증 포함)"""
         try:
             print("YES24 SCM 페이지로 이동 중...")
@@ -263,20 +272,89 @@ class Yes24Scraper:
             # SMS 인증 화면 감지
             if "sms" in self.driver.current_url.lower() or "SMSAuth" in self.driver.current_url:
                 print("\n=== SMS 인증 화면 감지 ===")
-                
-                # 1. 휴대폰번호 입력
-                print(f"\n휴대폰 번호 자동 입력 중: {phone_number}")
+
+                # 1. 휴대폰번호 선택
+                # GUI 나 외부에서 전달 가능: phone_choice는 '1'/'2' 또는 실제 전화번호 문자열일 수 있음
+                if progress_callback:
+                    try:
+                        progress_callback({'event': 'choose_phone', 'text': '휴대폰 번호를 선택하세요'})
+                    except Exception:
+                        pass
+
+                # Allow selection via parameter, environment variable, or interactive prompt.
+                # 우선순위: phone_number param > env PHONE_CHOICE > phone_choice numeric ('1'/'2') > phone_choice string > interactive prompt > 기본 매핑
+                selected_phone = None
+                # 1) explicit phone_number parameter
+                if phone_number:
+                    selected_phone = phone_number
+
+                # 2) environment variable override (PHONE_CHOICE)
+                if not selected_phone:
+                    env_choice = os.getenv('PHONE_CHOICE')
+                    if env_choice:
+                        env_choice = env_choice.strip()
+                        if env_choice in ('1', '2'):
+                            phone_choice = env_choice
+                        elif env_choice in ('01094603191', '01040435756'):
+                            selected_phone = env_choice
+
+                # 3) phone_choice parameter (numeric selection or direct number)
+                if not selected_phone and phone_choice:
+                    if phone_choice in ['1', '2']:
+                        if phone_choice == '1':
+                            selected_phone = '01094603191'
+                        else:
+                            selected_phone = '01040435756'
+                    elif isinstance(phone_choice, str) and phone_choice.isdigit():
+                        selected_phone = phone_choice
+
+                # 4) interactive prompt when possible (local runs) or wait for web selection
+                if not selected_phone:
+                    # If OTP server is enabled, wait for phone selection from web UI
+                    if os.getenv('USE_OTP_SERVER') == '1':
+                        try:
+                            from otp_server import wait_for_phone
+                            print("Waiting for phone selection from web…")
+                            phone_sel = wait_for_phone(timeout=auth_wait_timeout)
+                            if phone_sel:
+                                selected_phone = phone_sel
+                                print(f"Selected phone from web: {selected_phone}")
+                        except Exception as e:
+                            print(f"wait_for_phone failed: {e}")
+
+                    if not selected_phone:
+                        try:
+                            if sys.stdin and sys.stdin.isatty():
+                                prompt = "휴대폰 선택: 1) 01094603191  2) 01040435756  (1/2, default 2): "
+                                choice = input(prompt).strip()
+                                if choice == '1':
+                                    selected_phone = '01094603191'
+                                else:
+                                    selected_phone = '01040435756'
+                        except Exception:
+                            pass
+
+                # 5) fallback default
+                if not selected_phone:
+                    selected_phone = '01040435756'
+
+                print(f"✓ 선택된 전화번호: {selected_phone}")
+
+                print("="*50 + "\n")
+
+                # 2. 휴대폰번호 입력
+                print(f"휴대폰 번호 자동 입력 중: {selected_phone}")
                 try:
                     phone_field = self.driver.find_element(By.CSS_SELECTOR, "input[type='text']")
                     phone_field.clear()
-                    phone_field.send_keys(phone_number)
-                    print(f"✓ 휴대폰 번호 입력: {phone_number}")
+                    phone_field.send_keys(selected_phone)
+                    print(f"✓ 휴대폰 번호 입력 완료")
                 except Exception as e:
                     print(f"⚠ 휴대폰 번호 입력 실패: {e}")
                 
                 time.sleep(1)
-                
-                # 2. 인증번호 요청 버튼 클릭
+
+                # 3. 인증번호 요청 버튼 클릭
                 print("인증번호 요청 버튼 클릭 중...")
                 try:
                     request_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '인증번호 요청')]")
@@ -284,9 +362,9 @@ class Yes24Scraper:
                     print("✓ 인증번호 요청 완료")
                 except Exception as e:
                     print(f"⚠ 인증번호 요청 버튼 클릭 실패: {e}")
-                
+
                 time.sleep(1)
-                
+
                 # 알림창 확인 버튼 자동 클릭
                 print("알림창 확인 버튼 클릭 중...")
                 try:
@@ -296,16 +374,57 @@ class Yes24Scraper:
                     print("✓ 알림창 확인 완료")
                 except Exception as e:
                     print(f"알림창 처리: {e}")
-                
+
                 time.sleep(1)
-                
-                # 3. 사용자로부터 인증번호 입력받기
-                print("\n" + "="*50)
-                print("📱 SMS 인증번호를 받으셨나요?")
-                auth_code = input("받은 인증번호를 입력하세요: ").strip()
-                print("="*50 + "\n")
-                
-                # 4. 인증번호 필드에 자동 입력
+
+                # 4. 사용자로부터 인증번호 입력받기
+                # Notify external UI that auth code was requested
+                if progress_callback:
+                    try:
+                        progress_callback({'event': 'auth_requested', 'text': '인증번호가 요청되었습니다'})
+                    except Exception:
+                        pass
+
+                # If GUI or external caller provided auth_code, use it. Otherwise wait for external_auth_code,
+                # optionally wait via OTP web server (USE_OTP_SERVER=1), or prompt interactively.
+                if auth_code is None:
+                    # 1) check for external_auth_code set by GUI caller
+                    waited = 0
+                    poll_interval = 1
+                    while True:
+                        if self.external_auth_code:
+                            auth_code = str(self.external_auth_code).strip()
+                            break
+                        if waited >= auth_wait_timeout:
+                            break
+                        time.sleep(poll_interval)
+                        waited += poll_interval
+
+                    # 2) if still no auth_code and OTP server requested, use it
+                    if not auth_code and os.getenv('USE_OTP_SERVER') == '1':
+                        try:
+                            from otp_server import wait_for_otp
+                            print("Waiting for OTP from web…")
+                            otp = wait_for_otp(timeout=auth_wait_timeout)
+                            if otp:
+                                auth_code = str(otp).strip()
+                                print(f"Received OTP from web: {auth_code}")
+                        except Exception as e:
+                            print(f"OTP server wait failed: {e}")
+
+                    # 3) interactive fallback when running locally without progress_callback
+                    if not auth_code and not progress_callback:
+                        try:
+                            auth_code = input("받은 인증번호를 입력하세요: ").strip()
+                        except Exception:
+                            pass
+
+                if not auth_code:
+                    print("⚠ 인증번호가 제공되지 않았습니다.")
+                else:
+                    print("="*50 + "\n")
+
+                # 5. 인증번호 필드에 자동 입력
                 print("인증번호 자동 입력 중...")
                 try:
                     # 두 번째 input 필드가 인증번호 필드
@@ -318,12 +437,17 @@ class Yes24Scraper:
                     auth_field.clear()
                     auth_field.send_keys(auth_code)
                     print(f"✓ 인증번호 입력: {auth_code}")
+                    if progress_callback:
+                        try:
+                            progress_callback({'event': 'auth_entered', 'text': f'인증번호 입력: {auth_code}'})
+                        except Exception:
+                            pass
                 except Exception as e:
                     print(f"⚠ 인증번호 입력 실패: {e}")
                 
                 time.sleep(1)
-                
-                # 5. 인증 버튼 클릭
+
+                # 6. 인증 버튼 클릭
                 print("인증 버튼 클릭 중...")
                 try:
                     # "인증" 버튼만 찾기 (인증번호 요청이 아닌)
@@ -348,8 +472,8 @@ class Yes24Scraper:
                             pass
                 
                 time.sleep(2)
-                
-                # 6. "정상적으로 인증 되었습니다" 알림창 확인 버튼 클릭
+
+                # 7. "정상적으로 인증 되었습니다" 알림창 확인 버튼 클릭
                 print("인증 완료 알림창 확인 중...")
                 try:
                     confirm_button = self.wait.until(
