@@ -8,6 +8,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import pytz
+import re
 
 
 def _locate_credentials_file():
@@ -52,6 +53,48 @@ def get_column_safe(df, *possible_names):
             return df[name]
     return pd.Series([''] * len(df))
 
+
+def _clean_isbn_series(s: pd.Series) -> pd.Series:
+    """숫자만 남기고, 13자리 ISBN만 반환. 실패시 빈 문자열."""
+    if s is None:
+        return pd.Series([], dtype=str)
+    series = s.fillna('').astype(str).str.strip()
+    # remove non-digits
+    series = series.str.replace(r'[^0-9]', '', regex=True)
+    # if 10-digit, convert to 13-digit; if 13-digit, keep; otherwise empty
+    def to_isbn13(x: str) -> str:
+        if not x:
+            return ''
+        if len(x) == 13:
+            return x
+        if len(x) == 10:
+            # convert ISBN-10 to ISBN-13 by prefixing 978 and recalculating check digit
+            core = '978' + x[:-1]
+            total = 0
+            for i, ch in enumerate(core):
+                d = ord(ch) - 48
+                total += d if (i % 2 == 0) else d * 3
+            check = (10 - (total % 10)) % 10
+            return core + str(check)
+        return ''
+
+    series = series.apply(to_isbn13)
+    return series
+
+
+def _normalize_date_series(s: pd.Series) -> pd.Series:
+    """날짜 문자열을 YYYY-MM-DD로 통일. 범위가 오면 앞 날짜를 사용."""
+    if s is None:
+        return pd.Series([], dtype=str)
+    series = s.fillna('').astype(str).str.strip()
+    # take left side of range markers like '~', '-', 'to', '–'
+    series = series.str.split(r'\s*~\s*|\s+to\s+|\s*–\s*|\s+-\s+', regex=True).str[0]
+    # try parse
+    parsed = pd.to_datetime(series, errors='coerce')
+    res = parsed.dt.strftime('%Y-%m-%d')
+    res = res.fillna('')
+    return res
+
 def process_kyobo_data(df):
     """교보문고 데이터 처리"""
     if df is None or df.empty:
@@ -63,6 +106,9 @@ def process_kyobo_data(df):
     result = pd.DataFrame()
     result['날짜'] = get_column_safe(df, '날짜', '조회기간')
     result['ISBN'] = get_column_safe(df, 'ISBN')
+    # normalized keys for reliable join
+    result['ISBN_clean'] = _clean_isbn_series(result['ISBN'])
+    result['날짜_clean'] = _normalize_date_series(result['날짜'])
     result['도서명'] = get_column_safe(df, '도서명', '상품명')
     result['저자'] = get_column_safe(df, '저자')
     result['출판사'] = get_column_safe(df, '출판사')
@@ -91,6 +137,8 @@ def process_aladin_data(df):
     result = pd.DataFrame()
     result['날짜'] = get_column_safe(df, '날짜', '조회기간')
     result['ISBN'] = get_column_safe(df, 'ISBN')
+    result['ISBN_clean'] = _clean_isbn_series(result['ISBN'])
+    result['날짜_clean'] = _normalize_date_series(result['날짜'])
     result['도서명'] = get_column_safe(df, '도서명')
     result['저자'] = get_column_safe(df, '저자')
     result['출판사'] = get_column_safe(df, '출판사')
@@ -112,6 +160,8 @@ def process_youngpoong_data(df):
     result = pd.DataFrame()
     result['날짜'] = get_column_safe(df, '날짜', '조회기간')
     result['ISBN'] = get_column_safe(df, 'ISBN', '바코드')
+    result['ISBN_clean'] = _clean_isbn_series(result['ISBN'])
+    result['날짜_clean'] = _normalize_date_series(result['날짜'])
     result['도서명'] = get_column_safe(df, '도서명')
     result['저자'] = get_column_safe(df, '저자')
     result['출판사'] = get_column_safe(df, '출판사', '출판사명')
@@ -135,6 +185,8 @@ def process_yes24_data(df):
     result = pd.DataFrame()
     result['날짜'] = get_column_safe(df, '날짜', '조회기간')
     result['ISBN'] = get_column_safe(df, 'ISBN', 'ISBN13')
+    result['ISBN_clean'] = _clean_isbn_series(result['ISBN'])
+    result['날짜_clean'] = _normalize_date_series(result['날짜'])
     result['도서명'] = get_column_safe(df, '도서명', '상품명')
     result['출판사'] = get_column_safe(df, '출판사', '제조사')
     result['업로드날짜'] = get_column_safe(df, '업로드날짜')
@@ -149,29 +201,29 @@ def merge_with_fallback(kyobo_df, aladin_df, youngpoong_df, yes24_df):
     """4개 서점 데이터를 조인하고 Fallback 로직 적용"""
     print("\n데이터 병합 중...")
     
-    # 1. 모든 서점 데이터를 날짜+ISBN 기준으로 Full Outer Join
-    merged = kyobo_df.copy() if not kyobo_df.empty else pd.DataFrame()
+    # 1. 모든 서점 데이터를 날짜_clean + ISBN_clean 기준으로 Full Outer Join
+    merged = kyobo_df.copy() if (kyobo_df is not None and not kyobo_df.empty) else pd.DataFrame()
     
     # 알라딘 병합
-    if not aladin_df.empty:
+    if aladin_df is not None and not aladin_df.empty:
         if merged.empty:
             merged = aladin_df.copy()
         else:
-            merged = pd.merge(merged, aladin_df, on=['날짜', 'ISBN'], how='outer', suffixes=('', '_알라딘'))
+            merged = pd.merge(merged, aladin_df, on=['날짜_clean', 'ISBN_clean'], how='outer', suffixes=('', '_알라딘'))
     
     # 영풍문고 병합
-    if not youngpoong_df.empty:
+    if youngpoong_df is not None and not youngpoong_df.empty:
         if merged.empty:
             merged = youngpoong_df.copy()
         else:
-            merged = pd.merge(merged, youngpoong_df, on=['날짜', 'ISBN'], how='outer', suffixes=('', '_영풍'))
+            merged = pd.merge(merged, youngpoong_df, on=['날짜_clean', 'ISBN_clean'], how='outer', suffixes=('', '_영풍'))
     
     # YES24 병합
-    if not yes24_df.empty:
+    if yes24_df is not None and not yes24_df.empty:
         if merged.empty:
             merged = yes24_df.copy()
         else:
-            merged = pd.merge(merged, yes24_df, on=['날짜', 'ISBN'], how='outer', suffixes=('', '_YES24'))
+            merged = pd.merge(merged, yes24_df, on=['날짜_clean', 'ISBN_clean'], how='outer', suffixes=('', '_YES24'))
     
     if merged.empty:
         print("⚠ 병합할 데이터가 없습니다.")
@@ -179,8 +231,9 @@ def merge_with_fallback(kyobo_df, aladin_df, youngpoong_df, yes24_df):
     
     # 2. Fallback 로직으로 메타데이터 통합
     integrated = pd.DataFrame()
-    integrated['날짜'] = merged['날짜']
-    integrated['ISBN'] = merged['ISBN']
+    # final keys use normalized values
+    integrated['날짜'] = merged.get('날짜_clean', merged.get('날짜', ''))
+    integrated['ISBN'] = merged.get('ISBN_clean', merged.get('ISBN', ''))
     
     # 도서명: 교보 → 알라딘 → 영풍 → YES24 (빈 문자열도 Fallback)
     integrated['도서명'] = merged.get('도서명', '')
@@ -419,4 +472,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
