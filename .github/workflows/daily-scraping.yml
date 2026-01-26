@@ -2,7 +2,7 @@ name: 서점 판매 데이터 자동 수집 (교보/알라딘/영풍)
 
 on:
   schedule:
-    - cron: '30 20 * * *'  # 한국시간 오전 5:30 (UTC 20:30)
+    - cron: '30 22 * * *'  # 한국시간 오전 5:30 (UTC 20:30)
   workflow_dispatch:
 
 jobs:
