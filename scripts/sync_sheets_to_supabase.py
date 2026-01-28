@@ -3,10 +3,10 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
 import json
+import argparse
 from supabase import create_client, Client
 
 # Configuration
-# Note: These should be set as Environment Variables in GitHub Secrets
 GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -40,7 +40,6 @@ def sync_store_sales():
 
     # Clean columns
     df['ISBN'] = df['ISBN'].astype(str).str.replace('.0', '', regex=False)
-    # Filter for valid dates (Google Sheets dates can sometimes come as ints or strings)
     df['날짜'] = pd.to_datetime(df['날짜']).dt.strftime('%Y-%m-%d')
     
     bookstores = ['교보계', 'YES24', '알라딘']
@@ -51,7 +50,6 @@ def sync_store_sales():
     
     melted = melted[melted['quantity'].fillna(0) > 0]
     
-    # Map to DB schema
     records = []
     for _, row in melted.iterrows():
         records.append({
@@ -67,11 +65,52 @@ def sync_store_sales():
 def sync_k_pub_sales():
     """Syncs data from K-Publishing (문화유통) sheet to Supabase."""
     print("Starting K-Publishing Sales Sync...")
-    # NOTE: K-Publishing structure might differ. 
-    # Usually it provides 'Total Sales' or similar. 
-    # If the structure is the same as the bookstore sheet, we reuse the logic.
-    # For now, placeholder for specific K-Pub mapping.
-    pass
+    gc = get_gspread_client()
+    sh = gc.open_by_key(K_PUB_SHEET_ID)
+    
+    # 1. Load Dimensions and Fact
+    print("Fetching sheets (agg_sales_daily, dim_books, dim_dates)...")
+    sales_df = pd.DataFrame(sh.worksheet("agg_sales_daily").get_all_records())
+    books_df = pd.DataFrame(sh.worksheet("dim_books").get_all_records())
+    dates_df = pd.DataFrame(sh.worksheet("dim_dates").get_all_records())
+    
+    if sales_df.empty or books_df.empty or dates_df.empty:
+        print("Required sheets are empty.")
+        return
+        
+    # 2. Join to get ISBN and Date
+    # Mapping: sales.book_id -> books.book_id (to get ISBN)
+    # Mapping: sales.date_id -> dates.date_id (to get actual date)
+    
+    # Clean dim_books: Keep only book_id and ISBN
+    books_lookup = books_df[['book_id', 'ISBN']].copy()
+    books_lookup['ISBN'] = books_lookup['ISBN'].astype(str).str.replace('.0', '', regex=False)
+    
+    # Clean dim_dates: Keep only date_id and date
+    dates_lookup = dates_df[['date_id', 'date']].copy()
+    
+    # Perform Joins
+    merged = sales_df.merge(books_lookup, on='book_id', how='left')
+    merged = merged.merge(dates_lookup, on='date_id', how='left')
+    
+    print(f"Merged {len(merged)} rows. Filtering and mapping...")
+    
+    # 3. Filter and Map to DB schema
+    records = []
+    for _, row in merged.iterrows():
+        if pd.isna(row['ISBN']) or pd.isna(row['date']):
+            continue
+            
+        records.append({
+            "isbn": row['ISBN'],
+            "sale_date": row['date'],
+            "bookstore": "문화유통DB", # Treat as a single source or aggregate
+            "quantity": int(row['total_quantity']),
+            "price": int(row['total_amount'] / row['total_quantity']) if row['total_quantity'] > 0 else 0
+        })
+    
+    print(f"Prepared {len(records)} records for Supabase.")
+    upsert_to_supabase(records)
 
 def upsert_to_supabase(records):
     if not records:
@@ -80,14 +119,12 @@ def upsert_to_supabase(records):
     
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # Process in chunks of 1000
-    chunk_size = 1000
+    chunk_size = 500
     for i in range(0, len(records), chunk_size):
         chunk = records[i:i + chunk_size]
         print(f"Upserting chunk {i//chunk_size + 1} ({len(chunk)} records)...")
-        # Upsert logic - assuming (isbn, sale_date, bookstore) is the primary key or unique constraint
         try:
-            res = supabase.table("daily_sales").upsert(
+            supabase.table("daily_sales").upsert(
                 chunk, 
                 on_conflict="isbn, sale_date, bookstore"
             ).execute()
@@ -95,10 +132,19 @@ def upsert_to_supabase(records):
             print(f"Error during upsert: {e}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Sync Google Sheets to Supabase.')
+    parser.add_argument('--source', choices=['bookstore', 'kpub'], required=True, 
+                        help='Source of the data (bookstore or kpub)')
+    
+    args = parser.parse_args()
+
     if not GOOGLE_CREDENTIALS_JSON or not SUPABASE_URL or not SUPABASE_KEY:
-        print("Missing required environment variables.")
+        print("Missing required environment variables (GOOGLE_CREDENTIALS, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).")
         exit(1)
         
-    sync_store_sales()
-    # sync_k_pub_sales() # Add when structure is confirmed
-    print("Sync process completed.")
+    if args.source == 'bookstore':
+        sync_store_sales()
+    elif args.source == 'kpub':
+        sync_k_pub_sales()
+        
+    print(f"Sync process for {args.source} completed.")
