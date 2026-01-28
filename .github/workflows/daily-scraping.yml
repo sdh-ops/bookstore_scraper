@@ -64,6 +64,15 @@ jobs:
       run: |
         python create_integrated_table.py
     
+    - name: Supabase 동기화
+      env:
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      run: |
+        pip install supabase
+        python scripts/sync_sheets_to_supabase.py
+
     - name: 결과 알림
       if: always()
       run: |
