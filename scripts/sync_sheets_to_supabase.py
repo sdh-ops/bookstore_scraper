@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import json
 import argparse
+import re
 from supabase import create_client, Client
 
 # Configuration
@@ -15,7 +16,18 @@ SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 SALES_SHEET_ID = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
 K_PUB_SHEET_ID = '1EfxiIat1bEUXOfdyPS184yY7ublnZVoZ7P81xMIouaE'
 
+def clean_isbn(val):
+    if pd.isna(val) or val is None:
+        return None
+    # Handle float-like strings from Excel/Sheets (e.g., "978...0")
+    s = str(val).strip()
+    if '.' in s:
+        s = s.split('.')[0]
+    return re.sub(r'[^0-9X]', '', s)
+
 def get_gspread_client():
+    import re # Ensure re is available if needed, though it's imported at top
+
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
@@ -39,10 +51,10 @@ def sync_store_sales():
         return
 
     # Clean columns
-    df['ISBN'] = df['ISBN'].astype(str).str.replace('.0', '', regex=False)
+    df['ISBN'] = df['ISBN'].apply(clean_isbn)
     df['날짜'] = pd.to_datetime(df['날짜']).dt.strftime('%Y-%m-%d')
     
-    bookstores = ['교보계', 'YES24', '알라딘']
+    bookstores = ['교보계', 'YES24', '알라딘', '영풍']
     melted = df.melt(id_vars=['날짜', 'ISBN', '정가'], 
                      value_vars=[b for b in bookstores if b in df.columns], 
                      var_name='bookstore', 
@@ -84,7 +96,7 @@ def sync_k_pub_sales():
     
     # Clean dim_books: Keep only book_id and ISBN
     books_lookup = books_df[['book_id', 'ISBN']].copy()
-    books_lookup['ISBN'] = books_lookup['ISBN'].astype(str).str.replace('.0', '', regex=False)
+    books_lookup['ISBN'] = books_lookup['ISBN'].apply(clean_isbn)
     
     # Clean dim_dates: Keep only date_id and date
     dates_lookup = dates_df[['date_id', 'date']].copy()
@@ -110,26 +122,69 @@ def sync_k_pub_sales():
         })
     
     print(f"Prepared {len(records)} records for Supabase.")
-    upsert_to_supabase(records)
+    upsert_to_supabase(records, "daily_sales")
 
-def upsert_to_supabase(records):
+def sync_inventory():
+    """Syncs inventory data from Google Sheets to Supabase."""
+    print("Starting Inventory Sync...")
+    gc = get_gspread_client()
+    sh = gc.open_by_key(K_PUB_SHEET_ID)
+    
+    print("Fetching sheets (재고현황, dim_books)...")
+    inv_df = pd.DataFrame(sh.worksheet("재고현황").get_all_records())
+    books_df = pd.DataFrame(sh.worksheet("dim_books").get_all_records())
+    
+    if inv_df.empty or books_df.empty:
+        print("Inventory or books sheet is empty.")
+        return
+
+    # 1. Mapping: book_id -> ISBN
+    books_lookup = books_df[['book_id', 'ISBN']].copy()
+    books_lookup['ISBN'] = books_lookup['ISBN'].apply(clean_isbn)
+    mapping = dict(zip(books_lookup['book_id'], books_lookup['ISBN']))
+
+    # 2. Process Inventory (Sort by date if available, but for latest sync we just need latest entries)
+    # If snapshot_date exists, we could sort, but usually the sheet has the latest.
+    
+    records = []
+    seen_isbns = set()
+    for _, row in inv_df.iterrows():
+        book_id = row.get('book_id')
+        isbn = mapping.get(book_id)
+        if not isbn or isbn in seen_isbns:
+            continue
+            
+        records.append({
+            "isbn": isbn,
+            "stock_normal": int(row.get('normal_stock', 0) or 0),
+            "stock_return": int(row.get('return_stock', 0) or 0),
+            "stock_hq": int(row.get('hq_stock', 0) or 0)
+        })
+        seen_isbns.add(isbn)
+
+    print(f"Prepared {len(records)} inventory records.")
+    upsert_to_supabase(records, "inventory")
+
+def upsert_to_supabase(records, table_name):
     if not records:
-        print("No records to upsert.")
+        print(f"No records to upsert for {table_name}.")
         return
     
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
+    on_conflict = "isbn, sale_date, bookstore" if table_name == "daily_sales" else "isbn"
+    
     chunk_size = 500
     for i in range(0, len(records), chunk_size):
         chunk = records[i:i + chunk_size]
-        print(f"Upserting chunk {i//chunk_size + 1} ({len(chunk)} records)...")
+        print(f"Upserting {table_name} chunk {i//chunk_size + 1} ({len(chunk)} records)...")
         try:
-            supabase.table("daily_sales").upsert(
+            supabase.table(table_name).upsert(
                 chunk, 
-                on_conflict="isbn, sale_date, bookstore"
+                on_conflict=on_conflict
             ).execute()
         except Exception as e:
-            print(f"Error during upsert: {e}")
+            print(f"Error during upsert to {table_name}: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Sync Google Sheets to Supabase.')
@@ -146,5 +201,7 @@ if __name__ == "__main__":
         sync_store_sales()
     elif args.source == 'kpub':
         sync_k_pub_sales()
+        sync_inventory()  # K-Pub source now includes inventory
+
         
     print(f"Sync process for {args.source} completed.")
