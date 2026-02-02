@@ -60,10 +60,14 @@ def sync_store_sales():
                      var_name='bookstore', 
                      value_name='quantity')
     
-    melted = melted[melted['quantity'].fillna(0) > 0]
+    # 🔍 Deduplicate/Aggregate before upsert
+    agg_df = melted.groupby(['날짜', 'ISBN', 'bookstore']).agg({
+        'quantity': 'sum',
+        '정가': 'first' # Assuming price is consistent
+    }).reset_index()
     
     records = []
-    for _, row in melted.iterrows():
+    for _, row in agg_df.iterrows():
         records.append({
             "isbn": row['ISBN'],
             "sale_date": row['날짜'],
@@ -72,7 +76,7 @@ def sync_store_sales():
             "price": int(row['정가']) if pd.notnull(row['정가']) else 0
         })
     
-    upsert_to_supabase(records)
+    upsert_to_supabase(records, "daily_sales")
 
 def sync_k_pub_sales():
     """Syncs data from K-Publishing (문화유통) sheet to Supabase."""
@@ -108,20 +112,31 @@ def sync_k_pub_sales():
     print(f"Merged {len(merged)} rows. Filtering and mapping...")
     
     # 3. Filter and Map to DB schema
+    merged = merged[pd.notnull(merged['ISBN']) & pd.notnull(merged['date'])]
+    
+    # 🔍 Deduplicate/Aggregate: Group by (ISBN, date, bookstore) to avoid "ON CONFLICT" errors in Postgres
+    # 🔍 Aggregation to prevent ON CONFLICT error
+    merged['date'] = pd.to_datetime(merged['date']).dt.strftime('%Y-%m-%d')
+    agg_df = merged.groupby(['ISBN', 'date']).agg({
+        'total_quantity': 'sum',
+        'total_amount': 'sum'
+    }).reset_index()
+    
+    # 3. Filter and Map to DB schema
     records = []
-    for _, row in merged.iterrows():
+    for _, row in agg_df.iterrows():
         if pd.isna(row['ISBN']) or pd.isna(row['date']):
             continue
             
         records.append({
             "isbn": row['ISBN'],
             "sale_date": row['date'],
-            "bookstore": "문화유통DB", # Treat as a single source or aggregate
+            "bookstore": "문화유통DB",
             "quantity": int(row['total_quantity']),
             "price": int(row['total_amount'] / row['total_quantity']) if row['total_quantity'] > 0 else 0
         })
     
-    print(f"Prepared {len(records)} records for Supabase.")
+    print(f"Prepared {len(records)} unique records for Supabase.")
     upsert_to_supabase(records, "daily_sales")
 
 def sync_inventory():
