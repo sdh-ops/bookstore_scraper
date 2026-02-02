@@ -156,25 +156,31 @@ def sync_inventory():
     inv_df = pd.DataFrame(sh.worksheet("재고현황").get_all_records())
     books_df = pd.DataFrame(sh.worksheet("dim_books").get_all_records())
     
-    if inv_df.empty or books_df.empty:
+    sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+    gc = get_gspread_client()
+    sh = gc.open_by_key(K_PUB_SHEET_ID)
+    
+    print("Fetching sheets (inventory, dim_books)...")
+    inv_df = pd.DataFrame(sh.worksheet("재고현황").get_all_records()) # Changed to "inventory" in snippet, but keeping "재고현황" as per original
+    mapping_df = pd.DataFrame(sh.worksheet("dim_books").get_all_records())
+    
+    if inv_df.empty or mapping_df.empty:
         print("Inventory or books sheet is empty.")
         return
 
     # 1. Mapping: book_id -> ISBN
-    books_lookup = books_df[['book_id', 'ISBN']].copy()
-    books_lookup['ISBN'] = books_lookup['ISBN'].apply(clean_isbn)
-    mapping = dict(zip(books_lookup['book_id'], books_lookup['ISBN']))
-
-    # 2. Process Inventory (Sort by date if available, but for latest sync we just need latest entries)
-    # If snapshot_date exists, we could sort, but usually the sheet has the latest.
+    mapping = dict(zip(mapping_df['book_id'].astype(str), mapping_df['ISBN'].astype(str)))
     
     records = []
     seen_isbns = set()
     for _, row in inv_df.iterrows():
-        book_id = row.get('book_id')
-        isbn = mapping.get(book_id)
+        book_id = str(row.get('book_id'))
+        isbn = clean_isbn(mapping.get(book_id))
         if not isbn or isbn in seen_isbns:
             continue
+            
+        # Ensure book exists in master table
+        ensure_book_exists(sb, isbn)
             
         # 구글 시트 헤더가 한글인 경우와 영문인 경우 모두 대응
         stock_normal = clean_int(row.get('normal_stock') or row.get('정상재고'))
@@ -182,9 +188,17 @@ def sync_inventory():
         stock_hq = clean_int(row.get('hq_stock') or row.get('본사재고'))
         # stock_logistics는 시트의 '전체재고' 또는 '재고합계' 컬럼에서 가져오거나 합산
         stock_logistics = clean_int(row.get('total_stock') or row.get('전체재고'))
+        
         if stock_logistics == 0:
             stock_logistics = stock_normal + stock_return + stock_hq
             
+        if stock_logistics > 0:
+            # 재고가 발생한 경우 books 테이블의 상태를 '판매중'으로 업데이트 (이미 출간된 경우 제외)
+            try:
+                sb.table('books').update({"status": "판매중"}).eq("isbn", isbn).in_("status", ["기획", "제작", "기획/제작중"]).execute()
+            except Exception as e:
+                print(f"Status update error for {isbn}: {e}")
+
         records.append({
             "isbn": isbn,
             "stock_normal": stock_normal,
@@ -193,7 +207,7 @@ def sync_inventory():
             "stock_logistics": stock_logistics
         })
         seen_isbns.add(isbn)
-
+    
     print(f"Prepared {len(records)} inventory records.")
     upsert_to_supabase(records, "inventory")
 
