@@ -193,9 +193,13 @@ def sync_inventory():
             stock_logistics = stock_normal + stock_return + stock_hq
             
         if stock_logistics > 0:
-            # 재고가 발생한 경우 books 테이블의 상태를 '판매중'으로 업데이트 (이미 출간된 경우 제외)
+            # 재고가 발생한 경우 books 테이블의 모든 상태 필드를 '판매중'으로 업데이트
             try:
-                sb.table('books').update({"status": "판매중"}).eq("isbn", isbn).in_("status", ["기획", "제작", "기획/제작중"]).execute()
+                sb.table('books').update({
+                    "status": "판매중",
+                    "sales_status": "판매중",
+                    "publication_stage": "출간"
+                }).eq("isbn", isbn).execute()
             except Exception as e:
                 print(f"Status update error for {isbn}: {e}")
 
