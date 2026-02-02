@@ -22,6 +22,7 @@ SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 # Sheet IDs
 SALES_SHEET_ID = '1bH7D7zO56xzp555BGiVCB1Mo5cRLxqN7GkC_Tudqp8s'
 K_PUB_SHEET_ID = '1EfxiIat1bEUXOfdyPS184yY7ublnZVoZ7P81xMIouaE'
+COSTS_SHEET_ID = '1okyT7AfjOAmYwIxA-ffQb7NGnlYIRhjrF9Kc3L77Tc8'
 
 def clean_isbn(val):
     if pd.isna(val) or val is None:
@@ -215,6 +216,54 @@ def sync_inventory():
     print(f"Prepared {len(records)} inventory records.")
     upsert_to_supabase(records, "inventory")
 
+def sync_production_costs():
+    """Syncs production cost data from Google Sheets ('제작비 월별 세분화작업 data') to Supabase."""
+    print("Starting Production Costs Sync...")
+    gc = get_gspread_client()
+    sh = gc.open_by_key(COSTS_SHEET_ID)
+    ws = sh.worksheet("data")
+    
+    data = ws.get_all_records()
+    df = pd.DataFrame(data)
+    
+    if df.empty:
+        print("No data found in production costs sheet.")
+        return
+
+    # Clean and Map columns
+    # The sheet is expected to have columns like 'ISBN', '제작월', '판수', etc.
+    # We will map them to the production_costs table columns.
+    
+    records = []
+    for _, row in df.iterrows():
+        isbn = clean_isbn(row.get('ISBN') or row.get('isbn'))
+        if not isbn:
+            continue
+            
+        records.append({
+            "isbn": isbn,
+            "production_month": str(row.get('제작월') or row.get('제작달') or ''),
+            "edition": str(row.get('판수') or row.get('판') or '1'),
+            "book_title": row.get('도서명') or row.get('서명'),
+            "print_qty": clean_int(row.get('발주부수') or row.get('인쇄부수')),
+            "receive_qty": clean_int(row.get('입고부수')),
+            "list_price": clean_int(row.get('정가')),
+            "cost_paper": clean_int(row.get('용지비') or row.get('종이값')),
+            "cost_ctp": clean_int(row.get('출력비') or row.get('CTP')),
+            "cost_body_print": clean_int(row.get('본문인쇄비') or row.get('본문인쇄')),
+            "cost_cover_print": clean_int(row.get('표지인쇄비') or row.get('표지인쇄')),
+            "cost_coating": clean_int(row.get('코팅비')),
+            "cost_finishing": clean_int(row.get('가공비')),
+            "cost_binding": clean_int(row.get('제본비')),
+            "cost_total": clean_int(row.get('제작합계') or row.get('합계')),
+            "vendor_paper": row.get('용지처'),
+            "vendor_body_print": row.get('인쇄처'),
+            "vendor_binding": row.get('제본처')
+        })
+
+    print(f"Prepared {len(records)} production cost records.")
+    upsert_to_supabase(records, "production_costs")
+
 def upsert_to_supabase(records, table_name):
     if not records:
         print(f"No records to upsert for {table_name}.")
@@ -238,8 +287,8 @@ def upsert_to_supabase(records, table_name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Sync Google Sheets to Supabase.')
-    parser.add_argument('--source', choices=['bookstore', 'kpub'], required=True, 
-                        help='Source of the data (bookstore or kpub)')
+    parser.add_argument('--source', choices=['bookstore', 'kpub', 'costs', 'all'], required=True, 
+                        help='Source of the data (bookstore, kpub, costs, or all)')
     
     args = parser.parse_args()
 
@@ -247,11 +296,13 @@ if __name__ == "__main__":
         print("Missing required environment variables (GOOGLE_CREDENTIALS, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).")
         exit(1)
         
-    if args.source == 'bookstore':
+    if args.source == 'bookstore' or args.source == 'all':
         sync_store_sales()
-    elif args.source == 'kpub':
+    if args.source == 'kpub' or args.source == 'all':
         sync_k_pub_sales()
-        sync_inventory()  # K-Pub source now includes inventory
+        sync_inventory()
+    if args.source == 'costs' or args.source == 'all':
+        sync_production_costs()
 
         
     print(f"Sync process for {args.source} completed.")
