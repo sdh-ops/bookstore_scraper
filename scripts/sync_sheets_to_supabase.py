@@ -169,11 +169,19 @@ def sync_inventory():
         if not isbn or isbn in seen_isbns:
             continue
             
+        # 구글 시트 헤더가 한글인 경우와 영문인 경우 모두 대응
+        stock_normal = int(row.get('normal_stock') or row.get('정상재고') or 0)
+        stock_return = int(row.get('return_stock') or row.get('반품재고') or 0)
+        stock_hq = int(row.get('hq_stock') or row.get('본사재고') or 0)
+        # stock_logistics는 시트의 '전체재고' 또는 '재고합계' 컬럼에서 가져오거나 합산
+        stock_logistics = int(row.get('total_stock') or row.get('전체재고') or (stock_normal + stock_return + stock_hq))
+            
         records.append({
             "isbn": isbn,
-            "stock_normal": int(row.get('normal_stock', 0) or 0),
-            "stock_return": int(row.get('return_stock', 0) or 0),
-            "stock_hq": int(row.get('hq_stock', 0) or 0)
+            "stock_normal": stock_normal,
+            "stock_return": stock_return,
+            "stock_hq": stock_hq,
+            "stock_logistics": stock_logistics
         })
         seen_isbns.add(isbn)
 
