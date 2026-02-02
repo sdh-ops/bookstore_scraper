@@ -7,6 +7,13 @@ import argparse
 import re
 from supabase import create_client, Client
 
+def clean_int(val):
+    if pd.isna(val) or val == '' or val is None:
+        return 0
+    if isinstance(val, (int, float)):
+        return int(val)
+    return int(re.sub(r'[^\d-]', '', str(val)) or 0)
+
 # Configuration
 GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
@@ -72,8 +79,8 @@ def sync_store_sales():
             "isbn": row['ISBN'],
             "sale_date": row['날짜'],
             "bookstore": row['bookstore'].replace('계', ''),
-            "quantity": int(row['quantity']),
-            "price": int(row['정가']) if pd.notnull(row['정가']) else 0
+            "quantity": clean_int(row['quantity']),
+            "price": clean_int(row['정가'])
         })
     
     upsert_to_supabase(records, "daily_sales")
@@ -170,11 +177,13 @@ def sync_inventory():
             continue
             
         # 구글 시트 헤더가 한글인 경우와 영문인 경우 모두 대응
-        stock_normal = int(row.get('normal_stock') or row.get('정상재고') or 0)
-        stock_return = int(row.get('return_stock') or row.get('반품재고') or 0)
-        stock_hq = int(row.get('hq_stock') or row.get('본사재고') or 0)
+        stock_normal = clean_int(row.get('normal_stock') or row.get('정상재고'))
+        stock_return = clean_int(row.get('return_stock') or row.get('반품재고'))
+        stock_hq = clean_int(row.get('hq_stock') or row.get('본사재고'))
         # stock_logistics는 시트의 '전체재고' 또는 '재고합계' 컬럼에서 가져오거나 합산
-        stock_logistics = int(row.get('total_stock') or row.get('전체재고') or (stock_normal + stock_return + stock_hq))
+        stock_logistics = clean_int(row.get('total_stock') or row.get('전체재고'))
+        if stock_logistics == 0:
+            stock_logistics = stock_normal + stock_return + stock_hq
             
         records.append({
             "isbn": isbn,
